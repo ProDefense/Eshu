@@ -12,6 +12,7 @@ services:
       - "5000:5000"
       - "8080:8080"   # Web server port
       - "8888:8888"
+      - "1337:1337"
     hostname: operator
     tty: true
     stdin_open: true

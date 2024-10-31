@@ -11,12 +11,12 @@ docker compose up -d --build
 docker compose up -it operator
 ```
 
-#### Start the container for the C2. In this example, MSF Console
+#### Exploitation
 
 To throw the exploit:
 
 
 
-#### API Interaction
+#### Post-Exploitation API Interaction
 
 Once integrated with Eshu:

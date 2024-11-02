@@ -1,0 +1,97 @@
+services:
+
+  # ----- ATTACKER INFRA -----
+  # Commenting this out for now
+  # operator:
+  #   build: ./operator
+  #   container_name: operator
+  #   volumes:
+  #     - ./operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit
+  #   # - ./operator/api:/opt/api-data
+  #   ports:
+  #     - "4444:4444"   # Reverse shell
+  #     - "5000:5000"
+  #     - "8080:8080"   # Web server port
+  #     - "8888:8888"
+  #   hostname: operator
+  #   tty: true
+  #   stdin_open: true
+  #   networks:
+  #     localnet:
+  #       ipv4_address: 10.1.1.2
+
+  operator:
+    build: 
+      context: .
+      dockerfile: operator/Dockerfile
+    hostname: operator
+    ports:
+      - "80:80"       # Auxiliary Metasploit port
+      - "4444:4444"   # Reverse shell
+      - "8080:8080"   # Web server port
+      - "55552:55552" # RPC port
+      - "55553:55553" # Additional RPC port if needed
+    environment:
+      - RPCPASS=memes
+      - RPCPORT=1337
+  #    - LPORT=4444
+  #    - LHOST=0.0.0.0
+  #    - DATABASE_URL=
+    volumes:
+      - ./config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
+  #   - ./operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit    
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.2
+
+  #attacker_msf:
+  #  image: metasploitframework/metasploit-framework
+  #  ports:
+  #    - "80:80"       # Aux port
+  #    - "4444:4444"   # Aux port
+  #    - "8080:8080"   # Aux port
+  #    - "55552:55552" # RPC Port
+  #    - "55553:55553" # RPC Port
+  #  environment:
+  #    - RPCPASS=memes
+  #    - RPCPORT=1337
+  #  volumes:
+  #    - ./config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
+  #  networks:
+  #    localnet:
+  #      ipv4_address: 10.1.1.33
+
+  eshuapi: 
+    build: .
+    ports:
+      - "5000:5000" # Default port for Flask
+    env_file: # Can list mutliple envs
+      - ./config_files/msf_config.env
+    environment:
+      - ESHU_PORT=5000
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.99
+    # volumes: # Or other volumes you want to use.
+    #   - ./states:/states
+
+  # ----- VICTIM MACHINES -----
+
+  # Metasploitable2 Victim Machine
+  metasploitable2:
+    image: tleemcjr/metasploitable2
+    container_name: metasploitable2
+    hostname: metasploitable2
+    entrypoint: bash -c '/bin/services.sh && tail -f /dev/null'
+    command: sleep infinite
+    networks:
+      localnet:
+        ipv4_address: 10.1.1.3
+
+networks:
+  localnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.1.1.0/24
+          gateway: 10.1.1.1

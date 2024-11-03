@@ -24,6 +24,7 @@ services:
     build: 
       context: .
       dockerfile: operator/Dockerfile
+    container_name: operator
     hostname: operator
     ports:
       - "80:80"       # Auxiliary Metasploit port
@@ -65,6 +66,8 @@ services:
 
   eshuapi: 
     build: .
+    container_name: eshu
+    hostname: eshu
     ports:
       - "5000:5000" # Default port for Flask
     env_file: # Can list mutliple envs

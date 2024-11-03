@@ -40,6 +40,8 @@ services:
     volumes:
       - ./config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
   #   - ./operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit    
+    tty: true
+    stdin_open: true
     networks:
       localnet:
         ipv4_address: 10.1.1.2

@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Update package lists and install necessary packages
 RUN apt-get update && apt-get install -y \
     python3 python3-pip vim curl wget bash nmap netcat \
-    hydra ruby ruby-dev build-essential \
+    hydra ruby ruby-dev build-essential iproute2 net-tools\
     openssl libreadline-dev zlib1g-dev libpcap-dev git \
     lsb-release software-properties-common \
     iputils-ping iputils-tracepath iputils-arping dnsutils \
@@ -40,7 +40,7 @@ RUN echo "load msgrpc Pass=${RPCPASS} ServerPort=${RPCPORT} ServerHost=0.0.0.0" 
 # Optionally, create a working directory
 WORKDIR /workspace
 
-EXPOSE 4444 55552
+EXPOSE 80 4444 5000 8080 55552 55553
 
 # Default command to keep the container running for interactive use
 ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc & tail -f /dev/null"]

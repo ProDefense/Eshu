@@ -40,7 +40,7 @@ RUN echo "load msgrpc Pass=${RPCPASS} ServerPort=${RPCPORT} ServerHost=0.0.0.0" 
 # Optionally, create a working directory
 WORKDIR /workspace
 
-EXPOSE 80 4444 5000 8080 55552 55553
+EXPOSE 80 4444 8080 55552 55553
 
 # Default command to keep the container running for interactive use
 ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc & tail -f /dev/null"]

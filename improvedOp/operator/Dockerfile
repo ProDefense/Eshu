@@ -35,15 +35,21 @@ ENV PATH="/opt/metasploit-framework/:$PATH"
 
 # Run the msfconsole.rc commands and start Metasploit RPC service
 COPY config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
-RUN echo "load msgrpc Pass=${RPCPASS} ServerPort=${RPCPORT} ServerHost=0.0.0.0" >> /opt/metasploit-framework/msfconsole.rc
+
+# Commenting out this line because its un necessary if we are overriding the rc file anyway
+# Also environment args in dockercompose do not apply here, you will need to set build args for that to pass correctl.y
+#RUN echo "load msgrpc Pass=${RPCPASS} ServerPort=${RPCPORT} ServerHost=0.0.0.0" >> /opt/metasploit-framework/msfconsole.rc
 
 # Optionally, create a working directory
 WORKDIR /workspace
 
 EXPOSE 80 4444 8080 55552 55553
 
-# Default command to keep the container running for interactive use
-ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc & tail -f /dev/null"]
+# What we are going to do instead is just start the operator container. 
+ENTRYPOINT ["/bin/bash", "-i"]
+
+# Default command to keep the container running for interactive use. This will cause interacting with it to fail
+#ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc & tail -f /dev/null"]
 
 #ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc"]
 # CMD ["/bin/bash"]

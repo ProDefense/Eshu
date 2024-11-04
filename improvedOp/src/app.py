@@ -42,4 +42,4 @@ def run_exploit():
     return jsonify({"status": "exploit executed", "name": data['exploit_name']})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=ESHU_PORT)
+    app.run(host='0.0.0.0', port=ESHU_PORT, debug=False)

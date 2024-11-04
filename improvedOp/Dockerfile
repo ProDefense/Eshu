@@ -14,4 +14,4 @@ RUN pip install .
 WORKDIR /app/src/
 
 # Run it all. 
-CMD ["python", "app.py"]
+ENTRYPOINT ["python", "app.py"]

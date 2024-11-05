@@ -52,4 +52,4 @@ ENTRYPOINT ["/bin/bash", "-i"]
 #ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc & tail -f /dev/null"]
 
 #ENTRYPOINT ["/bin/bash", "-c", "cd /opt/metasploit-framework && msfconsole -r msfconsole.rc"]
-# CMD ["/bin/bash"]
+#CMD ["/bin/bash", "-c"]

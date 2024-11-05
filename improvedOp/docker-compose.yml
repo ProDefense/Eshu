@@ -8,6 +8,8 @@ services:
       dockerfile: operator/Dockerfile
     container_name: operator
     hostname: operator
+    stdin_open: true
+    tty: true
     ports:
       - "80:80"       # Auxiliary Metasploit port
       - "4444:4444"   # Reverse shell

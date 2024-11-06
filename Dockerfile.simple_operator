@@ -1,0 +1,18 @@
+# Start with the lightweight Alpine base image
+FROM alpine:latest
+
+# Install Python, Vim, Curl, Wget, and Bash
+RUN apk update && \
+    apk add --no-cache python3 py3-pip vim curl wget bash nmap
+
+# Set Python3 as the default Python command
+RUN ln -sf python3 /usr/bin/python
+
+# Set the default shell to Bash
+SHELL ["/bin/bash", "-c"]
+
+# Optionally, create a working directory
+WORKDIR /workspace
+
+# Default command to keep the container running for interactive use
+CMD ["/bin/bash"]

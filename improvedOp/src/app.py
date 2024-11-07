@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from pymetasploit3.msfrpc import MsfRpcClient
 import os
 import time
+import json  
 
 app = Flask(__name__)
 
@@ -62,11 +63,15 @@ def run_exploit():
             response = format_output(session.read())
             output[cmd] = response
 
-        return jsonify({
+        # Pretty-print JSON response with indentation
+        response_data = {
             "status": "Commands executed",
             "session_id": session_id,
             "output": output
-        }), 200, {'Content-Type': 'application/json; charset=utf-8'}
+        }
+        response_json = json.dumps(response_data, indent=4)
+        
+        return app.response_class(response_json, mimetype='application/json')
 
     except Exception as e:
         print(f"[Error] {e}")

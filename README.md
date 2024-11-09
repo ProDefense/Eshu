@@ -5,7 +5,7 @@ Common Language Platform for multiple Command and Control Frameworks
 ## Testing Lab Setup
 
 This is an environment using Docker with test targets to
-test using the ESHU api.
+test using the ESHU CLP Python Library.
 
 ### To Simply Start...
 

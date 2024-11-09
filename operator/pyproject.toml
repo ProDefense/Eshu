@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eshu"
+version = "0.0.1"
+description = "Eshu is a common language platform for post-exploitation between multiple C2 frameworks."
+authors = [{ name = "Alexander Aviles", email = "temp@email.com" }, {name = "Yousif Alsabah"}, {name = "Xun-Yang Leong"}, {name = "Alan Ingersoll"}, {name = "Prateek Ravindran"}]
+license = { text = "ProDefense" }

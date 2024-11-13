@@ -18,6 +18,17 @@ if ENV['RPCPORT']
 else
   rpcport = "55552"
 end
+if ENV['SLIVERPASS']
+  sliverpasswd = ENV['SLIVERPASS']
+else
+  sliverpasswd = "passwd"
+end
+if ENV['SLIVERPORT']
+  sliverport = ENV['SLIVERPORT']
+else
+  sliverport = "55552"
+end
 
 run_single("load msgrpc Pass=#{rpcpasswd} ServerPort=#{rpcport} ServerHost=0.0.0.0")
+run_single("load msgrpc Pass=#{sliverpasswd} ServerPort=#{sliverport} ServerHost=0.0.0.0")
 </ruby>

@@ -1,4 +1,4 @@
-This is a branch for Sliver API Implementation
+This is a branch for Sliver Server and API Implementation
 
 # Eshu Python Library v1
 
@@ -34,6 +34,8 @@ To test successful network status
 ```bash
 # Ping metasploitable2 @ 10.1.1.3
 ping 10.1.1.3
+# Ping sliver @ 10.1.1.4
+ping 10.1.1.4
 ```
 
 To stop all running containers

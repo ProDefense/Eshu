@@ -1,9 +1,63 @@
 import os
 import time
 import json
-#from pymetasploit3.msfrpc import MsfRpcClient
-
+from pymetasploit3.msfrpc import MsfRpcClient
 class Metasploit:
+    
+    def __init__(self, password, server='127.0.0.1', port=55553):
+        self.client = MsfRpcClient(password, server=server, port=port, ssl=True)
+        self.name = "Metasploit API"
+        print(f"Starting {self.name}")
+        self.targets = {}
+        
+    def save_session(self, framework_name, session_id):
+        hostID = f"{framework_name}{session_id}"
+        self.targets[hostID] = session_id
+        
+    def query_hosts(self):
+        """Retrieve all hosts from Metasploit, filtered by kwargs."""
+        hosts = self.client.db.hosts
+        print("Retrieved Metasploit compromised hosts")
+        for session_id in self.client.sessions.list.keys():
+            if not any(session_id == str(val) for val in self.targets.values()):
+                self.save_session("msf", int(session_id))        
+        return hosts
+
+    def send_cmd(self, id=None, os=None, *commands):
+        """
+        Run a command on the host specified by `id`, filtered by OS if provided.
+        """
+        output = []
+        if not id:
+            raise ValueError("Host ID must be provided.")
+
+        # Get session ID from targets mapping
+        session_id = self.targets.get(id)
+        if not session_id:
+            raise ValueError(f"Host ID {id} not found in targets.")
+
+        # Locate the session
+        session = self.client.sessions.list.get(str(session_id))
+        if not session:
+            raise ValueError(f"Session with ID {session_id} not found.")
+
+        # Check OS/platform if provided
+        if os and session['platform'] != os:
+            raise ValueError(f"Session {session_id} is not running on the specified OS: {os}.")
+
+        # Run the command and collect output
+        for cmd in commands:
+            try:
+                print(f"Sent command {cmd} on target with id: {id}")
+                cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd)
+                output.append(cmd_output)
+                print(f"Successfully sent command, received output.")
+            except Exception as e:
+                output.append(f"Error executing command '{cmd}': {e}")
+
+        return output
+    
+''' class Metasploit:
     def __init__(self):
         self.name = "Metasploit API"
         print(f"Starting {self.name}")
@@ -85,4 +139,4 @@ class Metasploit:
 # Example usage:
 # msf = Metasploit()
 # response = msf.run_exploit(commands=["uname -a", "id"])
-# print(json.dumps(response, indent=4))
+# print(json.dumps(response, indent=4))'''

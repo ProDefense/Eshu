@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Update package lists and install necessary packages
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip vim curl wget bash nmap netcat \
+    python3 python3-pip vim nano curl wget bash nmap netcat \
     hydra ruby ruby-dev build-essential iproute2 net-tools\
     openssl libreadline-dev zlib1g-dev libpcap-dev git \
     lsb-release software-properties-common \
@@ -23,6 +23,12 @@ RUN ln -sf python3 /usr/bin/python
 
 # Set the default shell to Bash
 SHELL ["/bin/bash", "-c"]
+
+# Install pymetasploit3
+RUN pip install pymetasploit3
+
+# Install Sliver-py
+RUN pip install sliver-py
 
 RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
     cd /opt/metasploit-framework && \
@@ -54,7 +60,7 @@ WORKDIR /workspace
 
 EXPOSE 80 4444 8080 55552 55553
 
-# What we are going to do instead is just start the operator container. 
+# What we are going to do instead is just start the operator container.
 ENTRYPOINT ["/bin/bash", "-i"]
 
 # Default command to keep the container running for interactive use. This will cause interacting with it to fail

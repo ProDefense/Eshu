@@ -1,11 +1,11 @@
-# Eshu Python Library v1
+# Eshu Python Library v2
 
 Common Language Platform for multiple Command and Control Frameworks
 
 ## Testing Lab Setup
 
 This is an environment using Docker with test targets to
-test using the ESHU CLP Python Library.
+demonstrate using the Eshu CLP Python Library.
 
 ### To Simply Start...
 
@@ -17,27 +17,34 @@ docker compose up -d --build
 
 Then launch into the operator machine
 ```console
-# In one terminal
+# In two separate terminals
 docker exec -it operator /bin/bash
 ```
 
-To test successful library status
+In the FIRST terminal:
 ```bash
-# Run main.py
-cd eshuCLP
-python3 main.py
+# launch metasploit
+msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
 ```
 
-To test successful network status
+In the SECOND terminal:
 ```bash
-# Ping metasploitable2 @ 10.1.1.3
+# run operator script
+cd eshuCLP
+python main.py
+```
+
+To test network connection to vulnerable machine(VM)
+```bash
 ping 10.1.1.3
+nmap -l metasploitable2
 ```
 
 To stop all running containers
 ```console
 docker compose stop
 ```
+
 If stopped, start again with
 ```console
 docker-compose start

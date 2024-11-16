@@ -4,10 +4,18 @@ import json
 from pymetasploit3.msfrpc import MsfRpcClient
 class Metasploit:
     
-    def __init__(self, password, server='127.0.0.1', port=55553):
-        self.client = MsfRpcClient(password, server=server, port=port, ssl=True)
+    def __init__(self, password, server='127.0.0.1', port=1337):
         self.name = "Metasploit API"
         print(f"Starting {self.name}")
+        while True:
+            try: 
+                self.client = MsfRpcClient(password, server=server, port=port)
+                break  # Successful connection
+            except:
+                print("[!] Failed. Trying again...")
+                time.sleep(1)
+
+        print(f"[+] Successfully connected to MSF Server!")
         self.targets = {}
         
     def save_session(self, framework_name, session_id):

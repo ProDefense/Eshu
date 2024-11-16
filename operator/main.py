@@ -9,4 +9,4 @@ sliverInstance = sliver.Sliver()
 
 e.register(name=msf, framework=msfInstance)
 e.register(name=sliver, framework=sliverInstance)
-e.get_hosts(msf, sliver)
+# e.get_hosts(msf, sliver) - DB Manager Error from metasploit

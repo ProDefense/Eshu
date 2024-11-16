@@ -2,9 +2,10 @@ from sliver import SliverClient
 
 class Sliver:
     def __init__(self, host='127.0.0.1', port=31337, token=None):
-        self.client = SliverClient(host, port, token)
         self.name = "Sliver API"
         print(f"Starting {self.name}")
+        config = {'host': host, 'port': port, 'token': token}
+        self.client = SliverClient(config)
         self.targets = {}
 
     def save_session(self, framework_name, agent_id):

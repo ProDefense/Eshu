@@ -39,6 +39,7 @@ python main.py
 To test network connection to vulnerable machine(VM)
 ```bash
 ping 10.1.1.3
+nmap -l metasploitable2
 ```
 
 To stop all running containers

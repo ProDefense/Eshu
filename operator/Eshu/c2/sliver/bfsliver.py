@@ -1,11 +1,26 @@
+import os
+import time
+import json
 from sliver import SliverClient
 
 class Sliver:
-    def __init__(self, host='127.0.0.1', port=31337, token=None):
+    def __init__(self, host=None, port=None, token=None):
         self.name = "Sliver API"
         print(f"Starting {self.name}")
-        config = {'host': host, 'port': port, 'token': token}
-        self.client = SliverClient(config)
+
+        # Use environment variables if not passed in
+        self.host = host or os.getenv('SLIVER_HOST', '127.0.0.1')
+        self.port = port or int(os.getenv('SLIVER_PORT', 31337))
+        self.token = token or os.getenv('SLIVER_TOKEN', None)
+
+        config = {'host': self.host, 'port': self.port, 'token': self.token}
+        
+        try:
+            self.client = SliverClient(config)
+            print(f"Connected to Sliver server at {self.host}:{self.port}")
+        except Exception as e:
+            print(f"Error connecting to Sliver server: {e}")
+            self.client = None
         self.targets = {}
 
     def save_session(self, framework_name, agent_id):
@@ -15,12 +30,15 @@ class Sliver:
 
     def query_hosts(self):
         """Retrieve all hosts from Sliver, filtered by kwargs."""
+        if not self.client:
+            raise ConnectionError("Sliver client is not connected.")
         hosts = self.client.list_agents()
-        # Register new agents into the targets mapping
+
+        # Register new agents into the target's mapping
         for agent in hosts:
             if not any(agent.id == val for val in self.targets.values()):
                 self.save_session("sliver", agent.id)
-        return hosts
+            return hosts
 
     def send_cmd(self, hostID=None, os=None, *commands):
         """

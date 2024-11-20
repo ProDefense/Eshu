@@ -23,18 +23,28 @@ class Metasploit:
         self.targets[hostID] = session_id
         
     def query_hosts(self):
-        """Retrieve all hosts from Metasploit, filtered by kwargs."""
-        hosts = self.client.db.hosts
-        print("Retrieved Metasploit compromised hosts")
-        for session_id in self.client.sessions.list.keys():
-            if not any(session_id == str(val) for val in self.targets.values()):
-                self.save_session("msf", int(session_id))        
+        """Retrieve all active sessions from Metasploit and return as host information."""
+        hosts = []
+        print("Retrieving active sessions in Metasploit...")
+
+        # Loop through active sessions to gather information
+        for session_id, session in self.client.sessions.list.items():
+            host_info = {
+                "session_id": session_id,
+                "target_host": session.get("tunnel_peer", "N/A"),
+                "platform": session.get("platform", "N/A"),
+                "via_exploit": session.get("via_exploit", "N/A"),
+                "via_payload": session.get("via_payload", "N/A"),
+            }
+            hosts.append(host_info)
+            # Save the session to targets with the format "msf<session_id>"
+            self.save_session("msf", int(session_id))
+
+        print("Active sessions retrieved:", hosts)
         return hosts
 
-    def send_cmd(self, id=None, os=None, *commands):
-        """
-        Run a command on the host specified by `id`, filtered by OS if provided.
-        """
+
+    def send_cmd(self, id=None, os=None, commands=[]):
         output = []
         if not id:
             raise ValueError("Host ID must be provided.")
@@ -49,15 +59,16 @@ class Metasploit:
         if not session:
             raise ValueError(f"Session with ID {session_id} not found.")
 
-        # Check OS/platform if provided
-        if os and session['platform'] != os:
-            raise ValueError(f"Session {session_id} is not running on the specified OS: {os}.")
+        # Check OS/platform if provided, and skip check if platform is not available
+        session_platform = session.get('platform', 'N/A')
+        if os and session_platform != os and session_platform != 'N/A':
+            raise ValueError(f"Session {session_id} is not running on the specified OS: {os}. It is on platform: {session_platform}.")
 
         # Run the command and collect output
         for cmd in commands:
             try:
                 print(f"Sent command {cmd} on target with id: {id}")
-                cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd)
+                cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd, end_strs=["$", "#", "\n"])
                 output.append(cmd_output)
                 print(f"Successfully sent command, received output.")
             except Exception as e:

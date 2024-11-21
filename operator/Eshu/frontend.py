@@ -1,4 +1,5 @@
 import re
+
 class Eshu:
     def __init__(self):
         self.name = "Eshu"
@@ -10,24 +11,33 @@ class Eshu:
         print(f"Registered {c2['framework']} for {c2['name']}")
         self.c2s[c2['name']] = c2['framework']
 
-# example host id structure: [framework][number] (i.e. "msf1", "sliver7", "havoc14")
+    # Retrieve all host information from the specified C2 frameworks
     def get_hosts(self, *frameworks):
-        """Get all host information from specified C2."""
         hosts = []
         for c2 in frameworks:
             hosts.extend(self.c2s[c2].query_hosts())
         return hosts
 
-    def run_cmd(self, *commands, **hosts):
-        """Run a command on specified, agnostic host for specified os."""
+    # Unified run_cmd call for different C2 frameworks
+    def run_cmd(self, commands=None, **hosts):
+        """
+        Run a command on specified host, agnostic of the underlying framework.
+        :param commands: List of commands to execute
+        :param hosts: Host details, including 'id' and 'os'
+        """
+        if not commands:
+            raise ValueError("Commands must be provided to execute.")
+
+        # Retrieve the corresponding C2 framework based on host ID
         c2 = self.getC2(hosts['id'])
-        outputs = c2.send_cmd(id=hosts['id'], os=hosts['os'], *commands)
+
+        # Forward the command execution to the appropriate C2
+        outputs = c2.send_cmd(id=hosts['id'], os=hosts.get('os', None), commands=commands)
         return outputs
 
     def getC2(self, hostID):
         """Extract the C2 framework (name) from hostID and return the corresponding C2."""
         name = self.getName(hostID)
-        # Assuming c2s list is ordered by the framework name and index corresponds
         if name in self.c2s:
             print(f"Found {name} instance")
             return self.c2s[name]
@@ -36,9 +46,8 @@ class Eshu:
 
     def getName(self, hostID):
         """Extract the framework name from the hostID."""
-        match = re.match(r'([a-zA-Z]+)', hostID)  # Match letters before the number
+        match = re.match(r'([a-zA-Z]+)', hostID)
         if match:
-            print(f"Matched hostID")
             return match.group(1)
         else:
             raise ValueError(f"Invalid hostID format: {hostID}")

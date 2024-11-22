@@ -67,26 +67,6 @@ services:
       localnet:
         ipv4_address: 10.1.1.3
 
-  # Sliver Machine
-  sliver:
-    build: 
-      context: .
-      dockerfile: sliver/Dockerfile  # Path to your Dockerfile
-    container_name: sliver-server
-    ports:
-      - "8888:8888"   # Map host port 8888 to container port 8888 (for Sliver server UI/API)
-      - "31337:31337" # Map host port 31337 to container port 31337 (for Sliver implants)
-    volumes:
-      - ./operator/config_files:/opt/sliver/config_files # If you have external configs
-      - ./data:/opt/sliver/data  # Persist Sliver's generated implants or other data
-    networks:
-      - sliver-network
-    environment:
-      - GOPATH=/root/go
-      - PATH=/opt/sliver/bin:$GOPATH/bin:/usr/local/go/bin:$PATH
-    restart: unless-stopped  # Automatically restart if it crashes
-    
-
 # ----- NETWORK -----
 
 networks:
@@ -96,6 +76,3 @@ networks:
       config:
         - subnet: 10.1.1.0/24
           gateway: 10.1.1.1
-  
-  sliver-network:
-    driver: bridge

@@ -19,7 +19,7 @@ docker compose up -d --build
 
 Then launch into the operator machine
 ```console
-# In two separate terminals
+# In three separate terminals
 docker exec -it operator /bin/bash
 ```
 
@@ -30,6 +30,12 @@ msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
 ```
 
 In the SECOND terminal:
+```bash
+# launch sliver
+/usr/local/bin/sliver-server
+```
+
+In the THIRD terminal:
 ```bash
 # run operator script
 cd eshuCLP

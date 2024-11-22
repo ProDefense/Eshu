@@ -14,21 +14,20 @@ sliverInstance = sliver.Sliver()
 e.register(name="msf", framework=msfInstance)
 e.register(name="sliver", framework=sliverInstance)
 
+# Retrieve and print hosts
 print("Getting Hosts")
-hostSet = e.get_hosts("msf") # SECOND: FULLY AGNOSTIC - returns ALL CURRENT C2 CONNECTED HOSTS
-print("Hosts = ", hostSet)
+hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
+print("Hosts =", hostSet)
 
-## Test 1: Query hosts in Metasploit
-#print("Testing host query in Metasploit...")
-#hosts = msfInstance.query_hosts()
-#print("Retrieved hosts:", hosts)
-#
-# Test 2: Unified run_cmd functionality
-try:
-    print("Testing command execution...")
-    commands = ["whoami", "uname -a"]
-    host_details = {"id": "msf1", "os": "linux"}
-    command_response = e.run_cmd(commands=commands, **host_details)
-    print("Command response:", command_response)
-except ValueError as ve:
-    print("Error during command execution:", ve)
+# Only execute if "msf1" is available
+if hostSet:
+    try:
+        print("Testing command execution...")
+        commands = ["whoami", "uname -a"]
+        host_details = {"id": "msf1", "os": "linux"}
+        command_response = e.run_cmd(commands=commands, **host_details)
+        print("Command response:", command_response)
+    except ValueError as ve:
+        print("Error during command execution:", ve)
+else:
+    print("No hosts available for command execution.")

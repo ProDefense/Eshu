@@ -15,12 +15,9 @@ sliverInstance = sliver.Sliver()
 #Register  the C2 framework with Eshu centralized management
 e.register(name=msf, framework=msfInstance)
 e.register(name=sliver, framework=sliverInstance)
-# e.get_hosts(msf, sliver) - DB Manager Error from metasploit
 
 # Test 1: Query hosts in Metasploit
-# print("Testing host query in Metasploit...")  
 hosts = msfInstance.query_hosts()
-    # print("Retrieved hosts: \n", hosts)
 
 # Test 2: Execute a command in an active Metasploit session
 try:
@@ -31,15 +28,10 @@ try:
 except ValueError as ve:
     print("[-] Error during command execution:", ve)  
 
+# Task 3: List all exploit
 # # List all exploit modules using the Metasploit instance / Looking for certain exploit
 # exploits = msfInstance.list_exploit('exploits')  
 # print(f"Available exploits: {len(exploits)}")
 # for i, exploit in enumerate(exploits, start=1):
 #     print(f" {i}. {exploit['fullname']}")
 
-# print("[*] Running ARP sweep and discovering hosts...")
-# discovered_hosts = msfInstance.get_host()
-
-# print("\n[+] Final Discovered Hosts:")
-# for host in discovered_hosts:
-#     print(f"  - IP: {host['address']}, OS: {host.get('os_name', 'Unknown')}, Name: {host.get('name', 'Unknown')}")

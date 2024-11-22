@@ -125,11 +125,27 @@ class Metasploit:
             raise ConnectionError("[-] Not connected")
         return self.client.modules.search(module_type)
     
-    def run_exploit(self, module_type, module_name):
+    # def run_exploit(self, module_type, target_info = None):
 
-        #running exploit
-        if module_type == "auxiliary":
-            print(module_name)
+    #     if not target_info:
+    #         raise ValueError("[-] Target Information is required to run a scan")
+        
+    #     while True:
+    #         #running exploit
+    #         if module_type == 'auxiliary':
+    #             print(module_name)
+    #         elif module_type == 'exploit':
+    #             print(module_name)
+    #         elif module_type == 'post':
+    #             print(module_name)
+    #         elif module_type == 'nop':
+    #             print(module_name)
+    #         elif module_type == 'encoder':
+    #             print(module_name)
+    #         elif module_type == 'payload':
+    #             print(module_name)
+    #         else:
+    #             raise ValueError(f"[-]  {module_type} is unknown module!")
 
 
 

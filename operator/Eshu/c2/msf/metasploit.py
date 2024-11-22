@@ -29,14 +29,14 @@ class Metasploit:
                 "via_payload": session.get("via_payload", "N/A"),
             }
             hosts.append(host_info)
-            self.eshu.save_session("msf", int(session_id))
+            self.eshu.save_session(f"msf{int(session_id)}", host_info)
         print("Active sessions retrieved:", hosts)
         return hosts
 
     def send_cmd(self, id=None, os=None, commands=[]):
         if not id:
             raise ValueError("Host ID must be provided.")
-        session_id = self.eshu.targets.get(id)
+        session_id = self.eshu.targets.get(id) #FIRST THING, GET ACTUAL INT
         if not session_id:
             raise ValueError(f"Host ID {id} not found in targets.")
         session = self.client.sessions.list.get(str(session_id))

@@ -7,9 +7,9 @@ class Eshu:
         self.c2s = {}
         self.targets = {}
         
-    def save_session(self, framework_name, session_id):
-        hostID = f"{framework_name}{session_id}"
-        self.targets[hostID] = session_id
+    def save_session(self, session_name, session_instance):
+        hostID = f"session_name"
+        self.targets[hostID] = session_instance
 
     def register(self, **c2):
         """Register a C2 interface to be used."""

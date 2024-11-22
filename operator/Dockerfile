@@ -39,11 +39,6 @@ RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit
 
 ENV PATH="/opt/metasploit-framework/:$PATH"
 
-# Download and install Sliver
-RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.34/sliver-server_linux -O /usr/local/bin/sliver-server && \
-    wget https://github.com/BishopFox/sliver/releases/download/v1.5.34/sliver-client_linux -O /usr/local/bin/sliver-client && \
-    chmod +x /usr/local/bin/sliver-server /usr/local/bin/sliver-client
-
 # Run the msfconsole.rc commands and start Metasploit RPC service
 COPY ./operator/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
 

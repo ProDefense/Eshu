@@ -1,7 +1,8 @@
 import os
 import time
 import json
-from pymetasploit3.msfrpc import MsfRpcClient
+from pymetasploit3.msfrpc import MsfRpcClient, MsfRpcMethod
+
 class Metasploit:
     
     def __init__(self, password, server='127.0.0.1', port=1337):
@@ -64,6 +65,91 @@ class Metasploit:
                 output.append(f"Error executing command '{cmd}': {e}")
 
         return output
+    
+    def list_exploit(self, module_type):
+        if not self.client:
+            raise ConnectionError("Not connected")
+        return self.client.modules.search(module_type)
+    
+    def get_host(self, os=None):
+    
+    # Check if the host is already cached
+        if self.targets:
+            print("[+] Returning cached target information.")
+            return self.filter_target(self.targets, os=os)
+
+        # Use an auxiliary module for discovery if not cached
+        print("[*] No target hosts found. Running discovery...")
+        use_exploit = self.client.modules.use('auxiliary', 'scanner/discovery/arp_sweep')
+        use_exploit['RHOSTS'] = '10.1.1.3/24' 
+
+        # Execute the module
+        job_id = use_exploit.execute()
+        print(f"[+] ARP sweep started with Job ID: {job_id}. Waiting for results...")
+
+        # Poll for results (simulated)
+        time.sleep(5)  # Simulate waiting for module execution
+
+        # Fetch discovered hosts from the Metasploit database
+        hosts = self.fetch_hosts_from_db()
+
+        if not hosts:
+            print("[!] No hosts found in the database. Ensure the discovery module ran successfully.")
+            return []
+
+        print(f"[+] Discovered {len(hosts)} hosts!")
+
+        # Save to cache
+        self.cached_hosts = hosts
+
+        # Filter by OS if specified
+        return self.filter_hosts(hosts, os=os)
+
+
+
+    def fetch_hosts_from_db(self):
+        """
+        Retrieve hosts from the Metasploit database using the RPC method.
+
+        Returns:
+            List of hosts retrieved from the database.
+        """
+        try:
+            # Query hosts using RPC call
+            response = self.method.rpc.call('db.hosts', {})
+            hosts = response.get('hosts', [])
+
+            if not hosts:
+                print("[!] No hosts retrieved. Ensure the discovery module ran successfully.")
+                return []
+
+            print("[+] Discovered Hosts:")
+            for host in hosts:
+                print(f"  - IP: {host['address']}, OS: {host.get('os_name', 'Unknown')}, Name: {host.get('name', 'Unknown')}")
+
+            return hosts
+
+        except Exception as e:
+            print(f"[!] Failed to retrieve hosts from database: {e}")
+            return []
+
+
+
+
+    def filter_hosts(self, hosts, os=None):
+        """
+        Filter hosts by OS.
+        """
+        if not os:
+            return hosts
+        filtered_hosts = [host for host in hosts if host.get('os_name', '').lower() == os.lower()]
+        print(f"[+] Filtered hosts by OS='{os}': {len(filtered_hosts)} found.")
+        return filtered_hosts
+
+    
+    
+
+
     
 ''' class Metasploit:
     def __init__(self):

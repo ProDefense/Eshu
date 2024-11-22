@@ -1,4 +1,5 @@
 import re
+import subprocess
 class Eshu:
     def __init__(self):
         self.name = "Eshu"

@@ -5,6 +5,11 @@ class Eshu:
         self.name = "Eshu"
         print(f"Initializing {self.name}")
         self.c2s = {}
+        self.targets = {}
+        
+    def save_session(self, framework_name, session_id):
+        hostID = f"{framework_name}{session_id}"
+        self.targets[hostID] = session_id
 
     def register(self, **c2):
         """Register a C2 interface to be used."""

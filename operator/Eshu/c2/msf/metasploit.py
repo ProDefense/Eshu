@@ -3,11 +3,11 @@ import time
 from pymetasploit3.msfrpc import MsfRpcClient
 
 class Metasploit:
-    def __init__(self, password, server='127.0.0.1', port=1337):
+    def __init__(self, password, Eshu, server='127.0.0.1', port=1337):
         self.name = "Metasploit API"
         print(f"Starting {self.name}")
         while True:
-            try: 
+            try:
                 self.client = MsfRpcClient(password, server=server, port=port)
                 break
             except:
@@ -15,11 +15,7 @@ class Metasploit:
                 time.sleep(1)
 
         print(f"[+] Successfully connected to MSF Server!")
-        self.targets = {}
-
-    def save_session(self, framework_name, session_id):
-        hostID = f"{framework_name}{session_id}"
-        self.targets[hostID] = session_id
+        self.eshu = Eshu
 
     def query_hosts(self):
         hosts = []
@@ -33,14 +29,14 @@ class Metasploit:
                 "via_payload": session.get("via_payload", "N/A"),
             }
             hosts.append(host_info)
-            self.save_session("msf", int(session_id))
+            self.eshu.save_session("msf", int(session_id))
         print("Active sessions retrieved:", hosts)
         return hosts
 
     def send_cmd(self, id=None, os=None, commands=[]):
         if not id:
             raise ValueError("Host ID must be provided.")
-        session_id = self.targets.get(id)
+        session_id = self.eshu.targets.get(id)
         if not session_id:
             raise ValueError(f"Host ID {id} not found in targets.")
         session = self.client.sessions.list.get(str(session_id))

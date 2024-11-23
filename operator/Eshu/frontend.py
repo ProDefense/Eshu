@@ -20,7 +20,7 @@ class Eshu:
         Register a C2 interface to be used.
         :param c2: Dictionary containing C2 name and framework instance.
         """
-        print(f"Registered {c2['framework']} for {c2['name']}")
+        print(f"[+] Registered {c2['framework']} for {c2['name']}")
         self.c2s[c2['name']] = c2['framework']
 
     def get_hosts(self, *frameworks):
@@ -30,6 +30,7 @@ class Eshu:
         :return: List of all host IDs across specified frameworks.
         """
         hosts = []
+        print("Getting Hosts")
         frameworks = frameworks or self.c2s.keys()  # Query all C2 frameworks if none specified
         for framework in frameworks:
             try:
@@ -39,8 +40,9 @@ class Eshu:
                     host_id = f"{framework}{session_id}"  # Generate unique host ID (e.g., "msf1")
                     self.save_session(host_id, host)  # Save to self.targets
                     hosts.append(host_id)  # Append the full host ID (e.g., "msf1")
+                print("[+] Hosts Stored")
             except Exception as e:
-                print(f"Error querying hosts in {framework}: {e}")
+                print(f"[!] Error querying hosts in {framework}: {e}")
         return hosts
 
     def run_cmd(self, commands=None, **hosts):
@@ -51,7 +53,7 @@ class Eshu:
         :return: Command outputs.
         """
         if not commands:
-            raise ValueError("Commands must be provided to execute.")
+            raise ValueError("[!] Commands must be provided to execute.")
 
         # Retrieve the corresponding C2 framework based on host ID
         c2 = self.getC2(hosts["id"])
@@ -59,14 +61,17 @@ class Eshu:
         # Extract the session ID from the host info in `self.targets`
         session_info = self.targets.get(hosts["id"])
         if not session_info:
-            raise ValueError(f"No host found with ID {hosts['id']}")
+            raise ValueError(f"[!] No host found with ID {hosts['id']}")
 
         session_id = session_info.get("session_id")  # Ensure we extract the session ID correctly
         if not session_id:
-            raise ValueError(f"No session ID found for host ID {hosts['id']}")
+            raise ValueError(f"[!] No session ID found for host ID {hosts['id']}")
 
         # Forward the command execution to the appropriate C2
         outputs = c2.send_cmd(id=hosts["id"], os=hosts.get("os", None), commands=commands)
+        print("[+] Command response(s):")
+        for response in outputs:
+            print(f"\t{response}")
         return outputs
 
 
@@ -74,10 +79,10 @@ class Eshu:
         """Extract the C2 framework (name) from hostID and return the corresponding C2."""
         name = self.getName(hostID)
         if name in self.c2s:
-            print(f"Found {name} instance")
+            print(f"[+] Found {name} instance")
             return self.c2s[name]
         else:
-            raise ValueError(f"No C2 found for framework {name}")
+            raise ValueError(f"[!] No C2 found for framework {name}")
 
     def getName(self, hostID):
         """Extract the framework name from the hostID."""
@@ -85,4 +90,4 @@ class Eshu:
         if match:
             return match.group(1)
         else:
-            raise ValueError(f"Invalid hostID format: {hostID}")
+            raise ValueError(f"[!] Invalid hostID format: {hostID}")

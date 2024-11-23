@@ -1,4 +1,4 @@
-# Eshu Python Library v2
+# Eshu Python Library v3
 
 Common Language Platform for multiple Command and Control Frameworks
 
@@ -22,16 +22,7 @@ docker exec -it operator /bin/bash
 
 In the terminal
 ```bash
-msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
-
-use auxiliary/scanner/ssh/ssh_login
-set RHOSTS 10.1.1.3
-set USERNAME msfadmin
-set PASSWORD msfadmin
-run
-
-cd eshuCLP
-python main.py
+python eshuCLP/main.py
 ```
 
 To test network connection to vulnerable machine(VM)

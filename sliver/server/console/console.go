@@ -23,16 +23,15 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"github.com/desertbit/grumble"
 
 	"github.com/bishopfox/sliver/client/command"
 	"github.com/bishopfox/sliver/client/command/help"
-	"github.com/bishopfox/sliver/client/console"
+	clientconsole "github.com/bishopfox/sliver/client/console"
 	consts "github.com/bishopfox/sliver/client/constants"
 	clienttransport "github.com/bishopfox/sliver/client/transport"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"github.com/bishopfox/sliver/server/configs"
 	"github.com/bishopfox/sliver/server/transport"
 	"google.golang.org/grpc"
 )
@@ -56,83 +55,67 @@ func Start() {
 	}
 	defer conn.Close()
 	localRPC := rpcpb.NewSliverRPCClient(conn)
-	con := console.NewConsole(false)
-	console.StartClient(con, localRPC, command.ServerCommands(con, serverOnlyCmds), command.SliverCommands(con), true)
-
-	con.App.Start()
+	if err := configs.CheckHTTPC2ConfigErrors(); err != nil {
+		fmt.Printf(Warn+"Error in HTTP C2 config: %s\n", err)
+	}
+	clientconsole.Start(localRPC, command.BindCommands, serverOnlyCmds, true)
 }
 
-// serverOnlyCmds - Server only commands
-func serverOnlyCmds() (commands []*cobra.Command) {
+// ServerOnlyCmds - Server only commands
+func serverOnlyCmds(console *clientconsole.SliverConsoleClient) {
+
 	// [ Multiplayer ] -----------------------------------------------------------------
 
-	startMultiplayer := &cobra.Command{
-		Use:     consts.MultiplayerModeStr,
-		Short:   "Enable multiplayer mode",
-		Long:    help.GetHelpFor([]string{consts.MultiplayerModeStr}),
-		Run:     startMultiplayerModeCmd,
-		GroupID: consts.MultiplayerHelpGroup,
-	}
-	command.Bind("multiplayer", false, startMultiplayer, func(f *pflag.FlagSet) {
-		f.StringP("lhost", "L", "", "interface to bind server to")
-		f.Uint16P("lport", "l", 31337, "tcp listen port")
-		f.BoolP("tailscale", "T", false, "only expose multiplayer interface over Tailscale (requires TS_AUTHKEY)")
-		f.BoolP("persistent", "p", false, "make persistent across restarts")
+	console.App.AddCommand(&grumble.Command{
+		Name:     consts.MultiplayerModeStr,
+		Help:     "Enable multiplayer mode",
+		LongHelp: help.GetHelpFor([]string{consts.MultiplayerModeStr}),
+		Flags: func(f *grumble.Flags) {
+			f.String("L", "lhost", "", "interface to bind server to")
+			f.Int("l", "lport", 31337, "tcp listen port")
+			f.Bool("p", "persistent", false, "make persistent across restarts")
+		},
+		Run: func(ctx *grumble.Context) error {
+			fmt.Println()
+			startMultiplayerModeCmd(ctx)
+			fmt.Println()
+			return nil
+		},
+		HelpGroup: consts.MultiplayerHelpGroup,
 	})
 
-	commands = append(commands, startMultiplayer)
-
-	newOperator := &cobra.Command{
-		Use:     consts.NewOperatorStr,
-		Short:   "Create a new operator config file",
-		Long:    newOperatorLongHelp,
-		Run:     newOperatorCmd,
-		GroupID: consts.MultiplayerHelpGroup,
-	}
-	command.Bind("operator", false, newOperator, func(f *pflag.FlagSet) {
-		f.StringP("lhost", "l", "", "listen host")
-		f.Uint16P("lport", "p", 31337, "listen port")
-		f.StringP("save", "s", "", "directory/file in which to save config")
-		f.StringP("name", "n", "", "operator name")
-		f.StringSliceP("permissions", "P", []string{}, "grant permissions to the operator profile (all, builder, crackstation)")
+	console.App.AddCommand(&grumble.Command{
+		Name:     consts.NewOperatorStr,
+		Help:     "Create a new operator config file",
+		LongHelp: help.GetHelpFor([]string{consts.NewOperatorStr}),
+		Flags: func(f *grumble.Flags) {
+			f.String("l", "lhost", "", "listen host")
+			f.Int("p", "lport", 31337, "listen port")
+			f.String("s", "save", "", "directory/file to the binary to")
+			f.String("n", "name", "", "operator name")
+		},
+		Run: func(ctx *grumble.Context) error {
+			fmt.Println()
+			newOperatorCmd(ctx)
+			fmt.Println()
+			return nil
+		},
+		HelpGroup: consts.MultiplayerHelpGroup,
 	})
-	command.BindFlagCompletions(newOperator, func(comp *carapace.ActionMap) {
-		(*comp)["save"] = carapace.ActionDirectories()
+
+	console.App.AddCommand(&grumble.Command{
+		Name:     consts.KickOperatorStr,
+		Help:     "Kick an operator from the server",
+		LongHelp: help.GetHelpFor([]string{consts.KickOperatorStr}),
+		Flags: func(f *grumble.Flags) {
+			f.String("n", "name", "", "operator name")
+		},
+		Run: func(ctx *grumble.Context) error {
+			fmt.Println()
+			kickOperatorCmd(ctx)
+			fmt.Println()
+			return nil
+		},
+		HelpGroup: consts.MultiplayerHelpGroup,
 	})
-	commands = append(commands, newOperator)
-
-	kickOperator := &cobra.Command{
-		Use:     consts.KickOperatorStr,
-		Short:   "Kick an operator from the server",
-		Long:    help.GetHelpFor([]string{consts.KickOperatorStr}),
-		Run:     kickOperatorCmd,
-		GroupID: consts.MultiplayerHelpGroup,
-	}
-
-	command.Bind("operator", false, kickOperator, func(f *pflag.FlagSet) {
-		f.StringP("name", "n", "", "operator name")
-	})
-	commands = append(commands, kickOperator)
-
-	return
 }
-
-const newOperatorLongHelp = `
-Create a new operator config file, operator configuration files allow
-remote machines to connect to the Sliver server. They are most commonly
-used for allowing remote operators to connect in "Multiplayer Mode."
-
-To generate a profile for a remote operator, you need to specify the
-"all" permission to grant the profile access to all gRPC APIs:
-
-new-operator --name <operator name> --lhost <sliver server> --permissions all
-
-Operator profiles can also be used to allow remote machines to connect to
-the Sliver server for other purposes, such as a "Remote Builder" or a
-"Crackstation."
-
-You can restrict profiles' permissions by using the --permissions flag, for
-example, to create a profile that can only be used as a "Remote Builder":
-
-new-operator --name <operator name> --lhost <sliver server> --permissions builder
-`

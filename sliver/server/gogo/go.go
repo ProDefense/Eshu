@@ -26,12 +26,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bishopfox/sliver/server/assets"
 	"github.com/bishopfox/sliver/server/log"
 )
 
 const (
 	goDirName = "go"
+
+	kb = 1024
+	mb = 1024 * kb
+	gb = 1024 * mb
 )
 
 var (
@@ -108,7 +111,7 @@ func GarbleCmd(config GoConfig, cwd string, command []string) ([]byte, error) {
 		fmt.Sprintf("GOPROXY=%s", config.GOPROXY),
 		fmt.Sprintf("HTTP_PROXY=%s", config.HTTPPROXY),
 		fmt.Sprintf("HTTPS_PROXY=%s", config.HTTPSPROXY),
-		fmt.Sprintf("PATH=%s:%s:%s", filepath.Join(config.GOROOT, "bin"), assets.GetZigDir(), os.Getenv("PATH")),
+		fmt.Sprintf("PATH=%s:%s", filepath.Join(config.GOROOT, "bin"), os.Getenv("PATH")),
 		fmt.Sprintf("GOGARBLE=%s", config.GOGARBLE),
 		fmt.Sprintf("HOME=%s", getHomeDir()),
 	}
@@ -151,8 +154,7 @@ func GoCmd(config GoConfig, cwd string, command []string) ([]byte, error) {
 		fmt.Sprintf("GOPROXY=%s", config.GOPROXY),
 		fmt.Sprintf("HTTP_PROXY=%s", config.HTTPPROXY),
 		fmt.Sprintf("HTTPS_PROXY=%s", config.HTTPSPROXY),
-		fmt.Sprintf("PATH=%s:%s:%s", filepath.Join(config.GOROOT, "bin"), assets.GetZigDir(), os.Getenv("PATH")),
-		fmt.Sprintf("HOME=%s", getHomeDir()),
+		fmt.Sprintf("PATH=%s:%s", filepath.Join(config.GOROOT, "bin"), os.Getenv("PATH")),
 	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -175,15 +177,16 @@ func GoCmd(config GoConfig, cwd string, command []string) ([]byte, error) {
 }
 
 // GoBuild - Execute a go build command, returns stdout/error
-func GoBuild(config GoConfig, src string, dest string, buildmode string, tags []string, ldflags []string, gcflags, asmflags string) ([]byte, error) {
+func GoBuild(config GoConfig, src string, dest string, buildmode string, tags []string, ldflags []string, gcflags, asmflags string, trimpath string) ([]byte, error) {
 	target := fmt.Sprintf("%s/%s", config.GOOS, config.GOARCH)
 	if _, ok := ValidCompilerTargets(config)[target]; !ok {
 		return nil, fmt.Errorf(fmt.Sprintf("Invalid compiler target: %s", target))
 	}
 	var goCommand = []string{"build"}
 
-	goCommand = append(goCommand, "-trimpath") // remove absolute paths from any compiled binary
-
+	if 0 < len(trimpath) {
+		goCommand = append(goCommand, trimpath)
+	}
 	if 0 < len(tags) {
 		goCommand = append(goCommand, "-tags")
 		goCommand = append(goCommand, tags...)

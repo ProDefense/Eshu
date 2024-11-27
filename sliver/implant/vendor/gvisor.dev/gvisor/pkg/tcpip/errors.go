@@ -380,45 +380,19 @@ func (*ErrNoPortAvailable) IgnoreStats() bool {
 }
 func (*ErrNoPortAvailable) String() string { return "no ports are available" }
 
-// ErrHostUnreachable indicates that a destination host could not be
-// reached.
+// ErrNoRoute indicates the operation is not able to find a route to the
+// destination.
 //
 // +stateify savable
-type ErrHostUnreachable struct{}
+type ErrNoRoute struct{}
 
-func (*ErrHostUnreachable) isError() {}
-
-// IgnoreStats implements Error.
-func (*ErrHostUnreachable) IgnoreStats() bool {
-	return false
-}
-func (*ErrHostUnreachable) String() string { return "no route to host" }
-
-// ErrHostDown indicates that a destination host is down.
-//
-// +stateify savable
-type ErrHostDown struct{}
-
-func (*ErrHostDown) isError() {}
+func (*ErrNoRoute) isError() {}
 
 // IgnoreStats implements Error.
-func (*ErrHostDown) IgnoreStats() bool {
+func (*ErrNoRoute) IgnoreStats() bool {
 	return false
 }
-func (*ErrHostDown) String() string { return "host is down" }
-
-// ErrNoNet indicates that the host is not on the network.
-//
-// +stateify savable
-type ErrNoNet struct{}
-
-func (*ErrNoNet) isError() {}
-
-// IgnoreStats implements Error.
-func (*ErrNoNet) IgnoreStats() bool {
-	return false
-}
-func (*ErrNoNet) String() string { return "machine is not on the network" }
+func (*ErrNoRoute) String() string { return "no route" }
 
 // ErrNoSuchFile is used to indicate that ENOENT should be returned the to
 // calling application.

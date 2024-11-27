@@ -1,121 +1,71 @@
+FROM golang:1.20.7
+
 #
-# For production:
-#   docker build --target production -t sliver .
-#   docker run -it --rm -v $HOME/.sliver:/home/sliver/.sliver sliver 
-#
-# For unit testing:
-#   docker build --target test .
+# IMPORTANT: This Dockerfile is used for testing, I do not recommend deploying
+#            Sliver using this container configuration! However, if you do want
+#            a Docker deployment this is probably a good place to start.
 #
 
-# STAGE: base
-## Compiles Sliver for use
-FROM golang:1.22.5 AS base
+ENV PROTOC_VER 21.12
+ENV PROTOC_GEN_GO_VER v1.27.1
+ENV GRPC_GO v1.2.0
 
-### Base packages
+# Base packages
 RUN apt-get update --fix-missing && apt-get -y install \
-    git build-essential zlib1g zlib1g-dev wget zip unzip
+    git build-essential zlib1g zlib1g-dev \
+    libxml2 libxml2-dev libxslt-dev locate curl \
+    libreadline6-dev libcurl4-openssl-dev git-core \
+    libssl-dev libyaml-dev openssl autoconf libtool \
+    ncurses-dev bison curl wget xsel postgresql \
+    postgresql-contrib postgresql-client libpq-dev \
+    libapr1 libaprutil1 libsvn1 \
+    libpcap-dev libsqlite3-dev libgmp3-dev \
+    zip unzip mingw-w64 binutils-mingw-w64 g++-mingw-w64 \
+    nasm gcc-multilib
 
-### Add sliver user
+#
+# > User
+#
 RUN groupadd -g 999 sliver && useradd -r -u 999 -g sliver sliver
 RUN mkdir -p /home/sliver/ && chown -R sliver:sliver /home/sliver
 
-### Build sliver:
-WORKDIR /go/src/github.com/bishopfox/sliver
-ADD . /go/src/github.com/bishopfox/sliver/
-RUN sed -i -e 's/\r$//' go-assets.sh
-RUN make clean-all 
-RUN make 
-RUN cp -vv sliver-server /opt/sliver-server 
-
-# STAGE: test
-## Run unit tests against the compiled instance
-## Use `--target test` in the docker build command to run this stage
-FROM base AS test
-
-RUN apt-get update --fix-missing \
-    && apt-get -y upgrade \
-    && apt-get -y install \
-    curl
-
-RUN /opt/sliver-server unpack --force 
-
-### Run unit tests
-RUN /go/src/github.com/bishopfox/sliver/go-tests.sh
-
-# STAGE: production
-## Final dockerized form of Sliver
-FROM debian:bookworm-slim AS production
-
-### Install production packages
-RUN apt-get update --fix-missing \
-    && apt-get -y upgrade \
-    && apt-get -y install \
-    libxml2 libxml2-dev libxslt-dev locate gnupg \
-    libreadline6-dev libcurl4-openssl-dev git-core \
-    libssl-dev libyaml-dev openssl autoconf libtool \
-    ncurses-dev bison curl xsel postgresql \
-    postgresql-contrib postgresql-client libpq-dev \
-    curl libapr1 libaprutil1 libsvn1 \
-    libpcap-dev libsqlite3-dev libgmp3-dev \
-    nasm
-
-### Install MSF for stager generation
+#
+# > Metasploit
+#
 RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall \
     && chmod 755 msfinstall \
-    && ./msfinstall \
-    && mkdir -p ~/.msf4/ \
-    && touch ~/.msf4/initial_setup_complete 
+    && ./msfinstall
+RUN mkdir -p ~/.msf4/ && touch ~/.msf4/initial_setup_complete \
+    &&  su -l sliver -c 'mkdir -p ~/.msf4/ && touch ~/.msf4/initial_setup_complete'
 
-### Cleanup unneeded packages
-RUN apt-get remove -y curl gnupg \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+#
+# > Sliver
+#
 
-### Add sliver user
-RUN groupadd -g 999 sliver \
-    && useradd -r -u 999 -g sliver sliver \
-    && mkdir -p /home/sliver/ \
-    && chown -R sliver:sliver /home/sliver \
-    && su -l sliver -c 'mkdir -p ~/.msf4/ && touch ~/.msf4/initial_setup_complete'
+# Protoc
+WORKDIR /tmp
+RUN wget -O protoc-${PROTOC_VER}-linux-x86_64.zip https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VER}/protoc-${PROTOC_VER}-linux-x86_64.zip \
+    && unzip protoc-${PROTOC_VER}-linux-x86_64.zip \
+    && cp -vv ./bin/protoc /usr/local/bin
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VER} \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@${GRPC_GO}
 
-### Copy compiled binary
-COPY --from=base /opt/sliver-server  /opt/sliver-server
+# Go assets
+WORKDIR /go/src/github.com/bishopfox/sliver
+ADD . /go/src/github.com/bishopfox/sliver/
+RUN make clean-all
+RUN make \
+    && cp -vv sliver-server /opt/sliver-server \
+    && /opt/sliver-server unpack --force 
 
-### Unpack Sliver:
+# Run unit tests
+RUN /go/src/github.com/bishopfox/sliver/go-tests.sh
+
+# Clean up
+RUN make clean \
+    && rm -rf /go/src/* \
+    && rm -rf /home/sliver/.sliver
+
 USER sliver
-RUN /opt/sliver-server unpack --force 
-
 WORKDIR /home/sliver/
-VOLUME [ "/home/sliver/.sliver" ]
-ENTRYPOINT [ "/opt/sliver-server" ]
-
-
-# STAGE: production-slim (about 1Gb smaller)
-FROM debian:bookworm-slim as production-slim
-
-### Install production packages
-RUN apt-get update --fix-missing \
-    && apt-get -y upgrade
-
-### Cleanup unneeded packages
-RUN apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-### Add sliver user
-RUN groupadd -g 999 sliver \
-    && useradd -r -u 999 -g sliver sliver \
-    && mkdir -p /home/sliver/ \
-    && chown -R sliver:sliver /home/sliver
-
-### Copy compiled binary
-COPY --from=base /opt/sliver-server  /opt/sliver-server
-
-### Unpack Sliver:
-USER sliver
-RUN /opt/sliver-server unpack --force 
-
-WORKDIR /home/sliver/
-VOLUME [ "/home/sliver/.sliver" ]
 ENTRYPOINT [ "/opt/sliver-server" ]

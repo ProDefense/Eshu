@@ -37,8 +37,6 @@ func NewDatagram(destAddr string, data []byte) (p Datagram, err error) {
 }
 
 // ParseDatagram parse to datagram from bytes
-//
-//nolint:nakedret
 func ParseDatagram(b []byte) (da Datagram, err error) {
 	if len(b) < 4+net.IPv4len+2 { // no enough data
 		err = errors.New("datagram to short")

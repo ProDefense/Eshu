@@ -24,31 +24,33 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/bishopfox/sliver/client/command/loot"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 	"google.golang.org/protobuf/proto"
 )
 
-// SSHCmd - A built-in SSH client command for the remote system (doesn't shell out).
-func SSHCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// SSHCmd - A built-in SSH client command for the remote system (doesn't shell out)
+func SSHCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	var (
-		privKey []byte
-		err     error
+		privKey       []byte
+		signeUserCert []byte
+		err           error
 	)
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
 
-	username, _ := cmd.Flags().GetString("login")
+	username := ctx.Flags.String("login")
 	if username == "" {
 		username = session.GetUsername()
 	}
 
-	port, _ := cmd.Flags().GetUint("port")
-	privateKeyPath, _ := cmd.Flags().GetString("private-key")
+	port := ctx.Flags.Uint("port")
+	privateKeyPath := ctx.Flags.String("private-key")
 	if privateKeyPath != "" {
 		privKey, err = os.ReadFile(privateKeyPath)
 		if err != nil {
@@ -56,14 +58,22 @@ func SSHCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 			return
 		}
 	}
-	password, _ := cmd.Flags().GetString("password")
+	password := ctx.Flags.String("password")
 
-	hostname := args[0]
-	command := args[1:]
+	signeUserCertPath := ctx.Flags.String("signed-user-cert")
+	if signeUserCertPath != "" {
+		signeUserCert, err = os.ReadFile(signeUserCertPath)
+		if err != nil {
+			con.PrintErrorf("%s\n", err)
+			return
+		}
+	}
 
-	kerberosRealm, _ := cmd.Flags().GetString("kerberos-realm")
-	kerberosConfig, _ := cmd.Flags().GetString("kerberos-config")
-	kerberosKeytabFile, _ := cmd.Flags().GetString("kerberos-keytab")
+	hostname := ctx.Args.String("hostname")
+	command := ctx.Args.StringList("command")
+	kerberosRealm := ctx.Flags.String("kerberos-realm")
+	kerberosConfig := ctx.Flags.String("kerberos-config")
+	kerberosKeytabFile := ctx.Flags.String("kerberos-keytab")
 
 	if kerberosRealm != "" && kerberosKeytabFile == "" {
 		con.PrintErrorf("You must specify a keytab file with the --kerberos-keytab flag\n")
@@ -78,9 +88,7 @@ func SSHCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		}
 	}
 
-	skipLoot, _ := cmd.Flags().GetBool("skip-loot")
-
-	if password == "" && len(privKey) == 0 && !skipLoot {
+	if password == "" && len(privKey) == 0 && !ctx.Flags.Bool("skip-loot") {
 		oldUsername := username
 		username, password, privKey = tryCredsFromLoot(con)
 		if username == "" {
@@ -89,16 +97,17 @@ func SSHCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 
 	sshCmd, err := con.Rpc.RunSSHCommand(context.Background(), &sliverpb.SSHCommandReq{
-		Username: username,
-		Hostname: hostname,
-		Port:     uint32(port),
-		PrivKey:  privKey,
-		Password: password,
-		Command:  strings.Join(command, " "),
-		Realm:    kerberosRealm,
-		Krb5Conf: kerberosConfig,
-		Keytab:   kerberosKeytab,
-		Request:  con.ActiveTarget.Request(cmd),
+		Username:       username,
+		Hostname:       hostname,
+		Port:           uint32(port),
+		PrivKey:        privKey,
+		Password:       password,
+		Command:        strings.Join(command, " "),
+		Realm:          kerberosRealm,
+		Krb5Conf:       kerberosConfig,
+		Keytab:         kerberosKeytab,
+		Request:        con.ActiveTarget.Request(ctx),
+		SignedUserCert: signeUserCert,
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -119,8 +128,8 @@ func SSHCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-// PrintSSHCmd - Print the ssh command response.
-func PrintSSHCmd(sshCmd *sliverpb.SSHCommand, con *console.SliverClient) {
+// PrintSSHCmd - Print the ssh command response
+func PrintSSHCmd(sshCmd *sliverpb.SSHCommand, con *console.SliverConsoleClient) {
 	if sshCmd.Response != nil && sshCmd.Response.Err != "" {
 		con.PrintErrorf("Error: %s\n", sshCmd.Response.Err)
 		if sshCmd.StdErr != "" {
@@ -138,7 +147,7 @@ func PrintSSHCmd(sshCmd *sliverpb.SSHCommand, con *console.SliverClient) {
 	}
 }
 
-func tryCredsFromLoot(con *console.SliverClient) (string, string, []byte) {
+func tryCredsFromLoot(con *console.SliverConsoleClient) (string, string, []byte) {
 	var (
 		username string
 		password string
@@ -148,18 +157,18 @@ func tryCredsFromLoot(con *console.SliverClient) (string, string, []byte) {
 	prompt := &survey.Confirm{Message: "No credentials provided, use from loot?"}
 	survey.AskOne(prompt, &confirm, nil)
 	if confirm {
-		// cred, err := loot.SelectCredentials(con)
-		// if err != nil {
-		// 	con.PrintErrorf("Invalid loot data, will try to use the SSH agent")
-		// } else {
-		// 	switch cred.CredentialType {
-		// 	case clientpb.CredentialType_API_KEY:
-		// 		privKey = []byte(cred.Credential.APIKey)
-		// 	case clientpb.CredentialType_USER_PASSWORD:
-		// 		username = cred.Credential.User
-		// 		password = cred.Credential.Password
-		// 	}
-		// }
+		cred, err := loot.SelectCredentials(con)
+		if err != nil {
+			con.PrintErrorf("Invalid loot data, will try to use the SSH agent")
+		} else {
+			switch cred.CredentialType {
+			case clientpb.CredentialType_API_KEY:
+				privKey = []byte(cred.Credential.APIKey)
+			case clientpb.CredentialType_USER_PASSWORD:
+				username = cred.Credential.User
+				password = cred.Credential.Password
+			}
+		}
 	}
 	return username, password, privKey
 }

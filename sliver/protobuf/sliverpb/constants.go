@@ -303,10 +303,12 @@ const (
 	MsgChmodReq
 	// MsgChmod - Replies with file path
 	MsgChmod
+
 	// MsgChownReq - Request to chown a file
 	MsgChownReq
 	// MsgChown - Replies with file path
 	MsgChown
+
 	// MsgChtimesReq - Request to chtimes a file
 	MsgChtimesReq
 	// MsgChown - Replies with file path
@@ -324,34 +326,6 @@ const (
 	MsgMemfilesRmReq
 	// MsgChown - Replies with file path
 	MsgMemfilesRm
-
-	// Wasm Extension messages
-	MsgRegisterWasmExtensionReq
-	MsgDeregisterWasmExtensionReq
-	MsgRegisterWasmExtension
-	MsgListWasmExtensionsReq
-	MsgListWasmExtensions
-	MsgExecWasmExtensionReq
-	MsgExecWasmExtension
-
-	// MsgCpReq - Request to copy a file from one place to another
-	MsgCpReq
-	// MsgCp - Confirms the success/failure, as well as the total number of bytes
-	// written of the cp request (resp to MsgCpReq)
-	MsgCp
-
-	// MsgGrepReq - Request to grep for data
-	MsgGrepReq
-
-	// Services messages
-	MsgServicesReq
-	MsgServiceDetailReq
-	MsgStartServiceByNameReq
-
-	MsgRegistryReadHiveReq
-
-	// MsgMountReq - Request filesystem mounts
-	MsgMountReq
 )
 
 // Constants to replace enums
@@ -541,8 +515,10 @@ func MsgNumber(request proto.Message) uint32 {
 
 	case *RegisterExtensionReq:
 		return MsgRegisterExtensionReq
+
 	case *CallExtensionReq:
 		return MsgCallExtensionReq
+
 	case *ListExtensionsReq:
 		return MsgListExtensionsReq
 
@@ -558,11 +534,6 @@ func MsgNumber(request proto.Message) uint32 {
 		return MsgMvReq
 	case *Mv:
 		return MsgMv
-
-	case *CpReq:
-		return MsgCpReq
-	case *Cp:
-		return MsgCp
 
 	case *CurrentTokenOwnerReq:
 		return MsgCurrentTokenOwnerReq
@@ -595,15 +566,8 @@ func MsgNumber(request proto.Message) uint32 {
 	case *Chtimes:
 		return MsgChtimes
 
-	case *GrepReq:
-		return MsgGrepReq
-
-	case *MountReq:
-		return MsgMountReq
-
 	case *MemfilesListReq:
 		return MsgMemfilesListReq
-
 	case *MemfilesAddReq:
 		return MsgMemfilesAddReq
 	case *MemfilesAdd:
@@ -613,26 +577,6 @@ func MsgNumber(request proto.Message) uint32 {
 	case *MemfilesRm:
 		return MsgMemfilesRm
 
-	case *RegisterWasmExtensionReq:
-		return MsgRegisterWasmExtensionReq
-	case *DeregisterWasmExtensionReq:
-		return MsgDeregisterWasmExtensionReq
-	case *ListWasmExtensionsReq:
-		return MsgListWasmExtensionsReq
-	case *ExecWasmExtensionReq:
-		return MsgExecWasmExtensionReq
-
-	case *ServicesReq:
-		return MsgServicesReq
-
-	case *ServiceDetailReq:
-		return MsgServiceDetailReq
-
-	case *StartServiceByNameReq:
-		return MsgStartServiceByNameReq
-
-	case *RegistryReadHiveReq:
-		return MsgRegistryReadHiveReq
 	}
 	return uint32(0)
 }

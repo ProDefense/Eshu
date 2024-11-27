@@ -23,11 +23,11 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// WGSocksStartCmd - Start a WireGuard reverse SOCKS proxy.
-func WGSocksStartCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// WGSocksStartCmd - Start a WireGuard reverse SOCKS proxy
+func WGSocksStartCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
@@ -37,12 +37,13 @@ func WGSocksStartCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		return
 	}
 
-	bindPort, _ := cmd.Flags().GetInt32("bind")
+	bindPort := ctx.Flags.Int("bind")
 
 	socks, err := con.Rpc.WGStartSocks(context.Background(), &sliverpb.WGSocksStartReq{
 		Port:    int32(bindPort),
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
+
 	if err != nil {
 		con.PrintErrorf("Error: %v", err)
 		return

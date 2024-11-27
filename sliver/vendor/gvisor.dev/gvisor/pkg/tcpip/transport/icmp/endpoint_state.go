@@ -15,7 +15,6 @@
 package icmp
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -35,8 +34,8 @@ func (p *icmpPacket) loadReceivedAt(nsec int64) {
 }
 
 // afterLoad is invoked by stateify.
-func (e *endpoint) afterLoad(ctx context.Context) {
-	stack.RestoreStackFromContext(ctx).RegisterRestoredEndpoint(e)
+func (e *endpoint) afterLoad() {
+	stack.StackFromEnv.RegisterRestoredEndpoint(e)
 }
 
 // beforeSave is invoked by stateify.
@@ -44,8 +43,8 @@ func (e *endpoint) beforeSave() {
 	e.freeze()
 }
 
-// Restore implements tcpip.RestoredEndpoint.Restore.
-func (e *endpoint) Restore(s *stack.Stack) {
+// Resume implements tcpip.ResumableEndpoint.Resume.
+func (e *endpoint) Resume(s *stack.Stack) {
 	e.thaw()
 
 	e.net.Resume(s)

@@ -7,18 +7,16 @@ import "net"
 
 const supportsReusePort = false
 
-func listenTCP(network, addr string, reuseport, reuseaddr bool) (net.Listener, error) {
-	if reuseport || reuseaddr {
+func listenTCP(network, addr string, reuseport bool) (net.Listener, error) {
+	if reuseport {
 		// TODO(tmthrgd): return an error?
 	}
 
 	return net.Listen(network, addr)
 }
 
-const supportsReuseAddr = false
-
-func listenUDP(network, addr string, reuseport, reuseaddr bool) (net.PacketConn, error) {
-	if reuseport || reuseaddr {
+func listenUDP(network, addr string, reuseport bool) (net.PacketConn, error) {
+	if reuseport {
 		// TODO(tmthrgd): return an error?
 	}
 

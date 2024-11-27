@@ -29,19 +29,20 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// MemfilesListCmd - List memfiles.
-func MemfilesListCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// MemfilesListCmd - List memfiles
+func MemfilesListCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
 	memfilesList, err := con.Rpc.MemfilesList(context.Background(), &sliverpb.MemfilesListReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -62,8 +63,8 @@ func MemfilesListCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 	}
 }
 
-// PrintMemfiles - Display an sliverpb.Ls object.
-func PrintMemfiles(ls *sliverpb.Ls, con *console.SliverClient) {
+// PrintMemfiles - Display an sliverpb.Ls object
+func PrintMemfiles(ls *sliverpb.Ls, con *console.SliverConsoleClient) {
 	if ls.Response != nil && ls.Response.Err != "" {
 		con.PrintErrorf("%s\n", ls.Response.Err)
 		return

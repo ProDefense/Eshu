@@ -23,9 +23,6 @@ import (
 )
 
 // FeatureSet defines features in terms of CPUID leaves and bits.
-// The kernel also exposes the presence of features to userspace through
-// a set of flags(HWCAP/HWCAP2) bits, exposed in the auxiliary vector, which
-// are necessary to read for some features (e.g. FSGSBASE).
 //
 // Common references:
 //
@@ -43,8 +40,6 @@ type FeatureSet struct {
 	// This is exported to allow direct calls of the underlying CPUID
 	// function, where required.
 	Function `state:".(Static)"`
-	// hwCap stores HWCAP1/2 exposed from the elf auxiliary vector.
-	hwCap hwCap
 }
 
 // saveFunction saves the function as a static query.
@@ -309,7 +304,7 @@ func (fs FeatureSet) HasFeature(feature Feature) bool {
 // a minimal /proc/cpuinfo, it is missing some fields like "microcode" that are
 // not always printed in Linux. The bogomips field is simply made up.
 func (fs FeatureSet) WriteCPUInfoTo(cpu uint, w io.Writer) {
-	// Avoid many redundant calls here, since this can occasionally appear
+	// Avoid many redunant calls here, since this can occasionally appear
 	// in the hot path. Read all basic information up front, see above.
 	ax, _, _, _ := fs.query(featureInfo)
 	ef, em, _, f, m, _ := signatureSplit(ax)
@@ -360,37 +355,22 @@ func (fs FeatureSet) Intel() bool {
 //
 // If xSaveInfo isn't supported, cpuid will not fault but will
 // return bogus values.
-var (
-	xsaveSize       = native(In{Eax: uint32(xSaveInfo)}).Ebx
-	maxXsaveSize    = native(In{Eax: uint32(xSaveInfo)}).Ecx
-	amxTileCfgSize  = native(In{Eax: uint32(xSaveInfo), Ecx: 17}).Eax
-	amxTileDataSize = native(In{Eax: uint32(xSaveInfo), Ecx: 18}).Eax
-)
-
-const (
-	// XCR0AMXMask are the bits that enable xsave to operate on AMX TILECFG
-	// and TILEDATA.
-	//
-	// Note: TILECFG and TILEDATA are always either both enabled or both
-	//       disabled.
-	//
-	// See Intel® 64 and IA-32 Architectures Software Developer’s Manual Vol.1
-	// section 13.3 for details.
-	XCR0AMXMask = uint64((1 << 17) | (1 << 18))
-)
+var maxXsaveSize = native(In{Eax: uint32(xSaveInfo)}).Ecx
 
 // ExtendedStateSize returns the number of bytes needed to save the "extended
-// state" for the enabled features and the boundary it must be aligned to.
-// Extended state includes floating point registers, and other cpu state that's
-// not associated with the normal task context.
+// state" for this processor and the boundary it must be aligned to. Extended
+// state includes floating point registers, and other cpu state that's not
+// associated with the normal task context.
 //
-// Note: the return value matches the size of signal FP state frames.
-// Look at check_xstate_in_sigframe() in the kernel sources for more details.
+// Note: We can save some space here with an optimization where we use a
+// smaller chunk of memory depending on features that are actually enabled.
+// Currently we just use the largest possible size for simplicity (which is
+// about 2.5K worst case, with avx512).
 //
 //go:nosplit
 func (fs FeatureSet) ExtendedStateSize() (size, align uint) {
 	if fs.UseXsave() {
-		return uint(xsaveSize), 64
+		return uint(maxXsaveSize), 64
 	}
 
 	// If we don't support xsave, we fall back to fxsave, which requires
@@ -398,22 +378,7 @@ func (fs FeatureSet) ExtendedStateSize() (size, align uint) {
 	return 512, 16
 }
 
-// AMXExtendedStateSize returns the number of bytes within the "extended state"
-// area that is used for AMX.
-func (fs FeatureSet) AMXExtendedStateSize() uint {
-	if fs.UseXsave() {
-		xcr0 := xgetbv(0)
-		if (xcr0 & XCR0AMXMask) != 0 {
-			return uint(amxTileCfgSize + amxTileDataSize)
-		}
-	}
-	return 0
-}
-
 // ValidXCR0Mask returns the valid bits in control register XCR0.
-//
-// Always exclude AMX bits, because we do not support it.
-// TODO(gvisor.dev/issues/9896): Implement AMX Support.
 //
 //go:nosplit
 func (fs FeatureSet) ValidXCR0Mask() uint64 {
@@ -421,7 +386,7 @@ func (fs FeatureSet) ValidXCR0Mask() uint64 {
 		return 0
 	}
 	ax, _, _, dx := fs.query(xSaveInfo)
-	return (uint64(dx)<<32 | uint64(ax)) &^ XCR0AMXMask
+	return uint64(dx)<<32 | uint64(ax)
 }
 
 // UseXsave returns the choice of fp state saving instruction.
@@ -436,19 +401,6 @@ func (fs FeatureSet) UseXsave() bool {
 //go:nosplit
 func (fs FeatureSet) UseXsaveopt() bool {
 	return fs.UseXsave() && fs.HasFeature(X86FeatureXSAVEOPT)
-}
-
-// UseXsavec returns true if 'fs' supports the "xsavec" instruction.
-//
-//go:nosplit
-func (fs FeatureSet) UseXsavec() bool {
-	return fs.UseXsaveopt() && fs.HasFeature(X86FeatureXSAVEC)
-}
-
-// UseFSGSBASE returns true if 'fs' supports the (RD|WR)(FS|GS)BASE instructions.
-func (fs FeatureSet) UseFSGSBASE() bool {
-	HWCAP2_FSGSBASE := uint64(1) << 1
-	return fs.HasFeature(X86FeatureFSGSBase) && ((fs.hwCap.hwCap2 & HWCAP2_FSGSBASE) != 0)
 }
 
 // archCheckHostCompatible checks for compatibility.

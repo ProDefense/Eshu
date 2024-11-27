@@ -23,22 +23,22 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// WebsitesUpdateContentCmd - Update metadata about static website content.
-func WebsitesUpdateContentCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	websiteName, _ := cmd.Flags().GetString("website")
+// WebsitesUpdateContentCmd - Update metadata about static website content
+func WebsitesUpdateContentCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	websiteName := ctx.Flags.String("website")
 	if websiteName == "" {
 		con.PrintErrorf("Must specify a website name via --website, see --help\n")
 		return
 	}
-	webPath, _ := cmd.Flags().GetString("web-path")
+	webPath := ctx.Flags.String("web-path")
 	if webPath == "" {
 		con.PrintErrorf("Must specify a web path via --web-path, see --help\n")
 		return
 	}
-	contentType, _ := cmd.Flags().GetString("content-type")
+	contentType := ctx.Flags.String("content-type")
 	if contentType == "" {
 		con.PrintErrorf("Must specify a new --content-type, see --help\n")
 		return

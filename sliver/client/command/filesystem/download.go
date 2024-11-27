@@ -28,32 +28,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/bishopfox/sliver/client/command/loot"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util/encoders"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
-	"gopkg.in/AlecAivazis/survey.v1"
+
+	"github.com/desertbit/grumble"
 )
 
-func DownloadCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func DownloadCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
-
-	remotePath := args[0]
-	recurse, _ := cmd.Flags().GetBool("recurse")
+	remotePath := ctx.Args.String("remote-path")
+	recurse := ctx.Flags.Bool("recurse")
 
 	ctrl := make(chan bool)
 	con.SpinUntil(fmt.Sprintf("Downloading %s ...", remotePath), ctrl)
 	download, err := con.Rpc.Download(context.Background(), &sliverpb.DownloadReq{
-		Request:          con.ActiveTarget.Request(cmd),
-		Path:             remotePath,
-		Recurse:          recurse,
-		RestrictedToFile: false,
+		Request: con.ActiveTarget.Request(ctx),
+		Path:    remotePath,
+		Recurse: recurse,
 	})
 	ctrl <- true
 	<-ctrl
@@ -61,6 +60,61 @@ func DownloadCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
+
+	fileName := filepath.Base(remotePath)
+	localPath := ctx.Args.String("local-path")
+	dst, err := filepath.Abs(localPath)
+	if err != nil {
+		con.PrintErrorf("%s\n", err)
+		return
+	}
+
+	fi, err := os.Stat(dst)
+	if err != nil && !os.IsNotExist(err) {
+		con.PrintErrorf("%s\n", err)
+		return
+	}
+	if err == nil && fi.IsDir() {
+		if download.IsDir {
+			// Come up with a good file name - filters might make the filename ugly
+			session, beacon := con.ActiveTarget.Get()
+			implantName := ""
+			if session != nil {
+				implantName = session.Name
+			} else if beacon != nil {
+				implantName = beacon.Name
+			}
+
+			fileName = fmt.Sprintf("%s_download_%s_%d.tar.gz", filepath.Base(implantName), filepath.Base(prettifyDownloadName(remotePath)), time.Now().Unix())
+		}
+		if runtime.GOOS == "windows" {
+			// Windows has a file path length of 260 characters
+			// +1 for the path separator before the file name
+			if len(dst)+len(fileName)+1 > 260 {
+				// Make an effort to shorten the file name. If this does not work, the operator will have to find somewhere else to put the file
+				fileName = fmt.Sprintf("down_%d.tar.gz", time.Now().Unix())
+			}
+		}
+		dst = filepath.Join(dst, fileName)
+	}
+
+	// Add an extension to a directory download if one is not provided.
+	if download.IsDir && (!strings.HasSuffix(dst, ".tgz") && !strings.HasSuffix(dst, ".tar.gz")) {
+		dst += ".tar.gz"
+	}
+
+	if _, err := os.Stat(dst); err == nil {
+		overwrite := false
+		prompt := &survey.Confirm{Message: "Overwrite local file?"}
+		survey.AskOne(prompt, &overwrite, nil)
+		if !overwrite {
+			return
+		}
+	}
+
+	//Update the local-path to the full derived path
+	ctx.Args["local-path"].Value = dst
+
 	if download.Response != nil && download.Response.Async {
 		con.AddBeaconCallback(download.Response.TaskID, func(task *clientpb.BeaconTask) {
 			err = proto.Unmarshal(task.Response, download)
@@ -68,12 +122,13 @@ func DownloadCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 				con.PrintErrorf("Failed to decode response %s\n", err)
 				return
 			}
-			HandleDownloadResponse(download, cmd, args, con)
+			HandleDownloadResponse(download, ctx, con)
 		})
 		con.PrintAsyncResponse(download.Response)
 	} else {
-		HandleDownloadResponse(download, cmd, args, con)
+		HandleDownloadResponse(download, ctx, con)
 	}
+
 }
 
 func prettifyDownloadName(path string) string {
@@ -104,7 +159,7 @@ func prettifyDownloadName(path string) string {
 	return filteredString
 }
 
-func HandleDownloadResponse(download *sliverpb.Download, cmd *cobra.Command, args []string, con *console.SliverClient) {
+func HandleDownloadResponse(download *sliverpb.Download, ctx *grumble.Context, con *console.SliverConsoleClient) {
 	var err error
 	if download.Response != nil && download.Response.Err != "" {
 		con.PrintErrorf("%s\n", download.Response.Err)
@@ -118,14 +173,8 @@ func HandleDownloadResponse(download *sliverpb.Download, cmd *cobra.Command, arg
 		}
 	}
 
-	remotePath := args[0]
-	var localPath string
-	if len(args) == 1 {
-		localPath = "."
-	} else {
-		localPath = args[1]
-	}
-	saveLoot, _ := cmd.Flags().GetBool("loot")
+	localPath := ctx.Args.String("local-path")
+	saveLoot := ctx.Flags.Bool("loot")
 
 	if download.ReadFiles == 0 {
 		// No files downloaded successfully.
@@ -134,62 +183,17 @@ func HandleDownloadResponse(download *sliverpb.Download, cmd *cobra.Command, arg
 	}
 
 	if saveLoot {
-		lootName, _ := cmd.Flags().GetString("name")
-		// Hand off to the loot package to take care of looting
-		fType, _ := cmd.Flags().GetString("file-type")
-		fileType := loot.ValidateLootFileType(fType, download.Data)
-		loot.LootDownload(download, lootName, fileType, cmd, con)
-	} else {
-		fileName := filepath.Base(remotePath)
-		dst, err := filepath.Abs(localPath)
+		lootName := ctx.Flags.String("name")
+		lootType, err := loot.ValidateLootType(ctx.Flags.String("type"))
 		if err != nil {
 			con.PrintErrorf("%s\n", err)
 			return
 		}
-
-		fi, err := os.Stat(dst)
-		if err != nil && !os.IsNotExist(err) {
-			con.PrintErrorf("%s\n", err)
-			return
-		}
-		if err == nil && fi.IsDir() {
-			if download.IsDir {
-				// Come up with a good file name - filters might make the filename ugly
-				session, beacon := con.ActiveTarget.Get()
-				implantName := ""
-				if session != nil {
-					implantName = session.Name
-				} else if beacon != nil {
-					implantName = beacon.Name
-				}
-
-				fileName = fmt.Sprintf("%s_download_%s_%d.tar.gz", filepath.Base(implantName), filepath.Base(prettifyDownloadName(remotePath)), time.Now().Unix())
-			}
-			if runtime.GOOS == "windows" {
-				// Windows has a file path length of 260 characters
-				// +1 for the path separator before the file name
-				if len(dst)+len(fileName)+1 > 260 {
-					// Make an effort to shorten the file name. If this does not work, the operator will have to find somewhere else to put the file
-					fileName = fmt.Sprintf("down_%d.tar.gz", time.Now().Unix())
-				}
-			}
-			dst = filepath.Join(dst, fileName)
-		}
-
-		// Add an extension to a directory download if one is not provided.
-		if download.IsDir && (!strings.HasSuffix(dst, ".tgz") && !strings.HasSuffix(dst, ".tar.gz")) {
-			dst += ".tar.gz"
-		}
-
-		if _, err := os.Stat(dst); err == nil {
-			overwrite := false
-			prompt := &survey.Confirm{Message: "Overwrite local file?"}
-			survey.AskOne(prompt, &overwrite, nil)
-			if !overwrite {
-				return
-			}
-		}
-
+		// Hand off to the loot package to take care of looting
+		fileType := loot.ValidateLootFileType(ctx.Flags.String("file-type"), download.Data)
+		loot.LootDownload(download, lootName, lootType, fileType, ctx, con)
+	} else {
+		dst := localPath
 		dstFile, err := os.Create(dst)
 		if err != nil {
 			con.PrintErrorf("Failed to open local file %s: %s\n", dst, err)

@@ -29,8 +29,9 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/client/core"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
-	"golang.org/x/term"
+	"golang.org/x/crypto/ssh/terminal"
+
+	"github.com/desertbit/grumble"
 )
 
 const (
@@ -39,8 +40,8 @@ const (
 	linux   = "linux"
 )
 
-// ShellCmd - Start an interactive shell on the remote system.
-func ShellCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ShellCmd - Start an interactive shell on the remote system
+func ShellCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
@@ -50,16 +51,16 @@ func ShellCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		return
 	}
 
-	shellPath, _ := cmd.Flags().GetString("shell-path")
-	noPty, _ := cmd.Flags().GetBool("no-pty")
+	shellPath := ctx.Flags.String("shell-path")
+	noPty := ctx.Flags.Bool("no-pty")
 	if con.ActiveTarget.GetSession().OS != linux && con.ActiveTarget.GetSession().OS != darwin {
 		noPty = true // Sliver's PTYs are only supported on linux/darwin
 	}
-	runInteractive(cmd, shellPath, noPty, con)
+	runInteractive(ctx, shellPath, noPty, con)
 	con.Println("Shell exited")
 }
 
-func runInteractive(cmd *cobra.Command, shellPath string, noPty bool, con *console.SliverClient) {
+func runInteractive(ctx *grumble.Context, shellPath string, noPty bool, con *console.SliverConsoleClient) {
 	con.Println()
 	con.PrintInfof("Wait approximately 10 seconds after exit, and press <enter> to continue\n")
 	con.PrintInfof("Opening shell tunnel (EOF to exit) ...\n\n")
@@ -85,7 +86,7 @@ func runInteractive(cmd *cobra.Command, shellPath string, noPty bool, con *conso
 	tunnel := core.GetTunnels().Start(rpcTunnel.TunnelID, rpcTunnel.SessionID)
 
 	shell, err := con.Rpc.Shell(context.Background(), &sliverpb.ShellReq{
-		Request:   con.ActiveTarget.Request(cmd),
+		Request:   con.ActiveTarget.Request(ctx),
 		Path:      shellPath,
 		EnablePTY: !noPty,
 		TunnelID:  tunnel.ID,
@@ -110,9 +111,9 @@ func runInteractive(cmd *cobra.Command, shellPath string, noPty bool, con *conso
 	log.Printf("Bound remote shell pid %d to tunnel %d", shell.Pid, shell.TunnelID)
 	con.PrintInfof("Started remote shell with pid %d\n\n", shell.Pid)
 
-	var oldState *term.State
+	var oldState *terminal.State
 	if !noPty {
-		oldState, err = term.MakeRaw(0)
+		oldState, err = terminal.MakeRaw(0)
 		log.Printf("Saving terminal state: %v", oldState)
 		if err != nil {
 			con.PrintErrorf("Failed to save terminal state")
@@ -130,7 +131,7 @@ func runInteractive(cmd *cobra.Command, shellPath string, noPty bool, con *conso
 		}
 	}()
 	log.Printf("Reading from stdin ...")
-	n, err := io.Copy(tunnel, newFilterReader(os.Stdin))
+	n, err := io.Copy(tunnel, os.Stdin)
 	log.Printf("Read %d bytes from stdin", n)
 	if err != nil && err != io.EOF {
 		con.PrintErrorf("Error reading from stdin: %s\n", err)
@@ -138,7 +139,7 @@ func runInteractive(cmd *cobra.Command, shellPath string, noPty bool, con *conso
 
 	if !noPty {
 		log.Printf("Restoring terminal state ...")
-		term.Restore(0, oldState)
+		terminal.Restore(0, oldState)
 	}
 
 	log.Printf("Exit interactive")

@@ -21,13 +21,12 @@ package loot
 import (
 	"context"
 
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
+	"github.com/desertbit/grumble"
 )
 
-func LootRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	loot, err := SelectLoot(cmd, con.Rpc)
+func LootRmCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	loot, err := SelectLoot(ctx, con.Rpc)
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return

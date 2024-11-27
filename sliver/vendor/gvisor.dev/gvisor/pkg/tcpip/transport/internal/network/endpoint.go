@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
-	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -118,9 +118,10 @@ type multicastMembership struct {
 // Init initializes the endpoint.
 func (e *Endpoint) Init(s *stack.Stack, netProto tcpip.NetworkProtocolNumber, transProto tcpip.TransportProtocolNumber, ops *tcpip.SocketOptions, waiterQueue *waiter.Queue) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.multicastMemberships != nil {
-		panic(fmt.Sprintf("endpoint is already initialized; got e.multicastMemberships = %#v, want = nil", e.multicastMemberships))
+	memberships := e.multicastMemberships
+	e.mu.Unlock()
+	if memberships != nil {
+		panic(fmt.Sprintf("endpoint is already initialized; got e.multicastMemberships = %#v, want = nil", memberships))
 	}
 
 	switch netProto {
@@ -129,24 +130,27 @@ func (e *Endpoint) Init(s *stack.Stack, netProto tcpip.NetworkProtocolNumber, tr
 		panic(fmt.Sprintf("invalid protocol number = %d", netProto))
 	}
 
-	e.stack = s
-	e.ops = ops
-	e.netProto = netProto
-	e.transProto = transProto
-	e.waiterQueue = waiterQueue
-	e.infoMu.Lock()
-	e.info = stack.TransportEndpointInfo{
-		NetProto:   netProto,
-		TransProto: transProto,
-	}
-	e.infoMu.Unlock()
-	e.effectiveNetProto = netProto
-	e.ipv4TTL = tcpip.UseDefaultIPv4TTL
-	e.ipv6HopLimit = tcpip.UseDefaultIPv6HopLimit
+	*e = Endpoint{
+		stack:       s,
+		ops:         ops,
+		netProto:    netProto,
+		transProto:  transProto,
+		waiterQueue: waiterQueue,
 
-	// Linux defaults to TTL=1.
-	e.multicastTTL = 1
-	e.multicastMemberships = make(map[multicastMembership]struct{})
+		info: stack.TransportEndpointInfo{
+			NetProto:   netProto,
+			TransProto: transProto,
+		},
+		effectiveNetProto: netProto,
+		ipv4TTL:           tcpip.UseDefaultIPv4TTL,
+		ipv6HopLimit:      tcpip.UseDefaultIPv6HopLimit,
+		// Linux defaults to TTL=1.
+		multicastTTL:         1,
+		multicastMemberships: make(map[multicastMembership]struct{}),
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.setEndpointState(transport.DatagramEndpointStateInitial)
 }
 
@@ -265,7 +269,7 @@ func (c *WriteContext) PacketInfo() WritePacketInfo {
 //
 // If this method returns nil, the caller should wait for the endpoint to become
 // writable.
-func (c *WriteContext) TryNewPacketBuffer(reserveHdrBytes int, data buffer.Buffer) *stack.PacketBuffer {
+func (c *WriteContext) TryNewPacketBuffer(reserveHdrBytes int, data bufferv2.Buffer) *stack.PacketBuffer {
 	e := c.e
 
 	e.sendBufferSizeInUseMu.Lock()
@@ -411,7 +415,7 @@ func (e *Endpoint) AcquireContextForWrite(opts tcpip.WriteOptions) (WriteContext
 		// interface/address used to send the packet so we need to construct
 		// a new route instead of using the connected route.
 		//
-		// Construct a destination matching the remote the endpoint is connected
+		// Contruct a destination matching the remote the endpoint is connected
 		// to.
 		to = &tcpip.FullAddress{
 			// RegisterNICID is set when the endpoint is connected. It is usually
@@ -443,21 +447,21 @@ func (e *Endpoint) AcquireContextForWrite(opts tcpip.WriteOptions) (WriteContext
 				// interface (usually when using link-local addresses), make sure the
 				// interface matches the specified local interface.
 				if nicID != 0 && nicID != pktInfoNICID {
-					return WriteContext{}, &tcpip.ErrHostUnreachable{}
+					return WriteContext{}, &tcpip.ErrNoRoute{}
 				}
 
 				// If a local address is not specified, then we need to make sure the
 				// bound address belongs to the specified local interface.
-				if pktInfoAddr.BitLen() == 0 {
+				if len(pktInfoAddr) == 0 {
 					// If the bound interface is different from the specified local
 					// interface, the bound address obviously does not belong to the
 					// specified local interface.
 					//
 					// The bound interface is usually only set for link-local addresses.
 					if info.BindNICID != 0 && info.BindNICID != pktInfoNICID {
-						return WriteContext{}, &tcpip.ErrHostUnreachable{}
+						return WriteContext{}, &tcpip.ErrNoRoute{}
 					}
-					if info.ID.LocalAddress.BitLen() != 0 && e.stack.CheckLocalAddress(pktInfoNICID, header.IPv6ProtocolNumber, info.ID.LocalAddress) == 0 {
+					if len(info.ID.LocalAddress) != 0 && e.stack.CheckLocalAddress(pktInfoNICID, header.IPv6ProtocolNumber, info.ID.LocalAddress) == 0 {
 						return WriteContext{}, &tcpip.ErrBadLocalAddress{}
 					}
 				}
@@ -465,7 +469,7 @@ func (e *Endpoint) AcquireContextForWrite(opts tcpip.WriteOptions) (WriteContext
 				nicID = pktInfoNICID
 			}
 
-			if pktInfoAddr.BitLen() != 0 {
+			if len(pktInfoAddr) != 0 {
 				// The local address must belong to the stack. If an outgoing interface
 				// is specified as a result of binding the endpoint to a device, or
 				// specifying the outgoing interface in the destination address/pkt info
@@ -479,7 +483,7 @@ func (e *Endpoint) AcquireContextForWrite(opts tcpip.WriteOptions) (WriteContext
 		} else {
 			if info.BindNICID != 0 {
 				if nicID != 0 && nicID != info.BindNICID {
-					return WriteContext{}, &tcpip.ErrHostUnreachable{}
+					return WriteContext{}, &tcpip.ErrNoRoute{}
 				}
 
 				nicID = info.BindNICID
@@ -566,18 +570,18 @@ func (e *Endpoint) Disconnect() {
 //
 // +checklocksread:e.mu
 func (e *Endpoint) connectRouteRLocked(nicID tcpip.NICID, localAddr tcpip.Address, addr tcpip.FullAddress, netProto tcpip.NetworkProtocolNumber) (*stack.Route, tcpip.NICID, tcpip.Error) {
-	if localAddr.BitLen() == 0 {
+	if len(localAddr) == 0 {
 		localAddr = e.Info().ID.LocalAddress
 		if e.isBroadcastOrMulticast(nicID, netProto, localAddr) {
 			// A packet can only originate from a unicast address (i.e., an interface).
-			localAddr = tcpip.Address{}
+			localAddr = ""
 		}
 
 		if header.IsV4MulticastAddress(addr.Addr) || header.IsV6MulticastAddress(addr.Addr) {
 			if nicID == 0 {
 				nicID = e.multicastNICID
 			}
-			if localAddr == (tcpip.Address{}) && nicID == 0 {
+			if localAddr == "" && nicID == 0 {
 				localAddr = e.multicastAddr
 			}
 		}
@@ -634,7 +638,7 @@ func (e *Endpoint) ConnectAndThen(addr tcpip.FullAddress, f func(netProto tcpip.
 		return err
 	}
 
-	r, nicID, err := e.connectRouteRLocked(nicID, tcpip.Address{}, addr, netProto)
+	r, nicID, err := e.connectRouteRLocked(nicID, "", addr, netProto)
 	if err != nil {
 		return err
 	}
@@ -648,7 +652,6 @@ func (e *Endpoint) ConnectAndThen(addr tcpip.FullAddress, f func(netProto tcpip.
 	}
 
 	if err := f(r.NetProto(), info.ID, id); err != nil {
-		r.Release()
 		return err
 	}
 
@@ -726,7 +729,7 @@ func (e *Endpoint) BindAndThen(addr tcpip.FullAddress, f func(tcpip.NetworkProto
 	}
 
 	nicID := addr.NIC
-	if addr.Addr.BitLen() != 0 && !e.isBroadcastOrMulticast(addr.NIC, netProto, addr.Addr) {
+	if len(addr.Addr) != 0 && !e.isBroadcastOrMulticast(addr.NIC, netProto, addr.Addr) {
 		nicID = e.stack.CheckLocalAddress(nicID, netProto, addr.Addr)
 		if nicID == 0 {
 			return &tcpip.ErrBadLocalAddress{}
@@ -887,8 +890,8 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 		nic := v.NIC
 		addr := fa.Addr
 
-		if nic == 0 && addr == (tcpip.Address{}) {
-			e.multicastAddr = tcpip.Address{}
+		if nic == 0 && addr == "" {
+			e.multicastAddr = ""
 			e.multicastNICID = 0
 			break
 		}
@@ -920,7 +923,7 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 
 		if v.InterfaceAddr.Unspecified() {
 			if nicID == 0 {
-				if r, err := e.stack.FindRoute(0, tcpip.Address{}, v.MulticastAddr, e.netProto, false /* multicastLoop */); err == nil {
+				if r, err := e.stack.FindRoute(0, "", v.MulticastAddr, e.netProto, false /* multicastLoop */); err == nil {
 					nicID = r.NICID()
 					r.Release()
 				}
@@ -948,14 +951,14 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 		e.multicastMemberships[memToInsert] = struct{}{}
 
 	case *tcpip.RemoveMembershipOption:
-		if !(header.IsV4MulticastAddress(v.MulticastAddr) && e.netProto == header.IPv4ProtocolNumber) && !(header.IsV6MulticastAddress(v.MulticastAddr) && e.netProto == header.IPv6ProtocolNumber) {
+		if !header.IsV4MulticastAddress(v.MulticastAddr) && !header.IsV6MulticastAddress(v.MulticastAddr) {
 			return &tcpip.ErrInvalidOptionValue{}
 		}
 
 		nicID := v.NIC
 		if v.InterfaceAddr.Unspecified() {
 			if nicID == 0 {
-				if r, err := e.stack.FindRoute(0, tcpip.Address{}, v.MulticastAddr, e.netProto, false /* multicastLoop */); err == nil {
+				if r, err := e.stack.FindRoute(0, "", v.MulticastAddr, e.netProto, false /* multicastLoop */); err == nil {
 					nicID = r.NICID()
 					r.Release()
 				}

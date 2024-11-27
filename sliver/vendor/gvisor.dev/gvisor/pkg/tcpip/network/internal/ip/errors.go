@@ -20,7 +20,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip"
 )
 
-// ForwardingError represents an error that occurred while trying to forward
+// ForwardingError represents an error that occured while trying to forward
 // a packet.
 type ForwardingError interface {
 	isForwardingError()
@@ -34,14 +34,6 @@ func (*ErrTTLExceeded) isForwardingError() {}
 
 func (*ErrTTLExceeded) String() string { return "ttl exceeded" }
 
-// ErrOutgoingDeviceNoBufferSpace indicates that the outgoing device does not
-// have enough space to hold a buffer.
-type ErrOutgoingDeviceNoBufferSpace struct{}
-
-func (*ErrOutgoingDeviceNoBufferSpace) isForwardingError() {}
-
-func (*ErrOutgoingDeviceNoBufferSpace) String() string { return "no device buffer space" }
-
 // ErrParameterProblem indicates the received packet had a problem with an IP
 // parameter.
 type ErrParameterProblem struct{}
@@ -50,22 +42,13 @@ func (*ErrParameterProblem) isForwardingError() {}
 
 func (*ErrParameterProblem) String() string { return "parameter problem" }
 
-// ErrInitializingSourceAddress indicates the received packet had a source
-// address that may only be used on the local network as part of initialization
-// work.
-type ErrInitializingSourceAddress struct{}
-
-func (*ErrInitializingSourceAddress) isForwardingError() {}
-
-func (*ErrInitializingSourceAddress) String() string { return "initializing source address" }
-
 // ErrLinkLocalSourceAddress indicates the received packet had a link-local
 // source address.
 type ErrLinkLocalSourceAddress struct{}
 
 func (*ErrLinkLocalSourceAddress) isForwardingError() {}
 
-func (*ErrLinkLocalSourceAddress) String() string { return "link local source address" }
+func (*ErrLinkLocalSourceAddress) String() string { return "link local destination address" }
 
 // ErrLinkLocalDestinationAddress indicates the received packet had a link-local
 // destination address.
@@ -75,12 +58,12 @@ func (*ErrLinkLocalDestinationAddress) isForwardingError() {}
 
 func (*ErrLinkLocalDestinationAddress) String() string { return "link local destination address" }
 
-// ErrHostUnreachable indicates that the destination host could not be reached.
-type ErrHostUnreachable struct{}
+// ErrNoRoute indicates that a route for the received packet couldn't be found.
+type ErrNoRoute struct{}
 
-func (*ErrHostUnreachable) isForwardingError() {}
+func (*ErrNoRoute) isForwardingError() {}
 
-func (*ErrHostUnreachable) String() string { return "no route to host" }
+func (*ErrNoRoute) String() string { return "no route" }
 
 // ErrMessageTooLong indicates the packet was too big for the outgoing MTU.
 //

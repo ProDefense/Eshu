@@ -17,8 +17,6 @@ package log
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
-	"strings"
 	"time"
 )
 
@@ -64,16 +62,9 @@ type JSONEmitter struct {
 }
 
 // Emit implements Emitter.Emit.
-func (e JSONEmitter) Emit(depth int, level Level, timestamp time.Time, format string, v ...any) {
-	logLine := fmt.Sprintf(format, v...)
-	if _, file, line, ok := runtime.Caller(depth + 1); ok {
-		if slash := strings.LastIndexByte(file, byte('/')); slash >= 0 {
-			file = file[slash+1:] // Trim any directory path from the file.
-		}
-		logLine = fmt.Sprintf("%s:%d] %s", file, line, logLine)
-	}
+func (e JSONEmitter) Emit(_ int, level Level, timestamp time.Time, format string, v ...interface{}) {
 	j := jsonLog{
-		Msg:   logLine,
+		Msg:   fmt.Sprintf(format, v...),
 		Level: level,
 		Time:  timestamp,
 	}

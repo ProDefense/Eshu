@@ -25,11 +25,13 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/spf13/cobra"
+
+	"github.com/desertbit/grumble"
 )
 
-// PivotsGraphCmd - Display pivots for all sessions.
-func PivotsGraphCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// PivotsGraphCmd - Display pivots for all sessions
+func PivotsGraphCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+
 	graph, err := con.Rpc.PivotGraph(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -43,4 +45,5 @@ func PivotsGraphCmd(cmd *cobra.Command, con *console.SliverClient, args []string
 	}
 
 	fmt.Printf("%s\n", string(data))
+
 }

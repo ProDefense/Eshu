@@ -19,28 +19,25 @@ package beacons
 */
 
 import (
+	"context"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/desertbit/grumble"
 )
 
 // BeaconsPruneCmd - Prune stale beacons automatically
-func BeaconsPruneCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	duration, _ := cmd.Flags().GetString("duration")
-	pruneDuration, err := time.ParseDuration(duration)
+func BeaconsPruneCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	pruneDuration, err := time.ParseDuration(ctx.Flags.String("duration"))
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
 	con.PrintInfof("Pruning beacons that missed their last checking by %s or more...\n\n", pruneDuration)
-	grpcCtx, cancel := con.GrpcContext(cmd)
-	defer cancel()
-	beacons, err := con.Rpc.GetBeacons(grpcCtx, &commonpb.Empty{})
+	beacons, err := con.Rpc.GetBeacons(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
@@ -62,7 +59,7 @@ func BeaconsPruneCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 	}
 	con.PrintWarnf("The following beacons and their tasks will be removed:\n")
 	for index, beacon := range pruneBeacons {
-		beacon, err := con.Rpc.GetBeacon(grpcCtx, &clientpb.Beacon{ID: beacon.ID})
+		beacon, err := con.Rpc.GetBeacon(context.Background(), &clientpb.Beacon{ID: beacon.ID})
 		if err != nil {
 			con.PrintErrorf("%s\n", err)
 			continue
@@ -78,7 +75,7 @@ func BeaconsPruneCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 	}
 	errCount := 0
 	for _, beacon := range pruneBeacons {
-		_, err := con.Rpc.RmBeacon(grpcCtx, &clientpb.Beacon{ID: beacon.ID})
+		_, err := con.Rpc.RmBeacon(context.Background(), &clientpb.Beacon{ID: beacon.ID})
 		if err != nil {
 			con.PrintErrorf("%s\n", err)
 			errCount++

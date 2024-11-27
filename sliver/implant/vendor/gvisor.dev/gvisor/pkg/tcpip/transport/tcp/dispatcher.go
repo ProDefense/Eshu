@@ -326,10 +326,9 @@ func (p *processor) start(wg *sync.WaitGroup) {
 				default:
 					panic(fmt.Sprintf("unexpected tcp state in processor: %v", state))
 				}
-				// If there are more segments to process and the
-				// endpoint lock is not held by user then
+				// If there are more segments to process then
 				// requeue this endpoint for processing.
-				if !ep.segmentQueue.empty() && !ep.isOwnedByUser() {
+				if !ep.segmentQueue.empty() {
 					p.epQ.enqueue(ep)
 				}
 			}
@@ -409,7 +408,7 @@ func (d *dispatcher) wait() {
 
 // queuePacket queues an incoming packet to the matching tcp endpoint and
 // also queues the endpoint to a processor queue for processing.
-func (d *dispatcher) queuePacket(stackEP stack.TransportEndpoint, id stack.TransportEndpointID, clock tcpip.Clock, pkt stack.PacketBufferPtr) {
+func (d *dispatcher) queuePacket(stackEP stack.TransportEndpoint, id stack.TransportEndpointID, clock tcpip.Clock, pkt *stack.PacketBuffer) {
 	d.mu.Lock()
 	closed := d.closed
 	d.mu.Unlock()
@@ -444,12 +443,7 @@ func (d *dispatcher) queuePacket(stackEP stack.TransportEndpoint, id stack.Trans
 		return
 	}
 
-	// Only wakeup the processor if endpoint lock is not held by a user
-	// goroutine as endpoint.UnlockUser will wake up the processor if the
-	// segment queue is not empty.
-	if !ep.isOwnedByUser() {
-		d.selectProcessor(id).queueEndpoint(ep)
-	}
+	d.selectProcessor(id).queueEndpoint(ep)
 }
 
 // selectProcessor uses a hash of the transport endpoint ID to queue the
@@ -504,7 +498,7 @@ func (j jenkinsHasher) hash(id stack.TransportEndpointID) uint32 {
 
 	h := jenkins.Sum32(j.seed)
 	h.Write(payload[:])
-	h.Write(id.LocalAddress.AsSlice())
-	h.Write(id.RemoteAddress.AsSlice())
+	h.Write([]byte(id.LocalAddress))
+	h.Write([]byte(id.RemoteAddress))
 	return h.Sum32()
 }

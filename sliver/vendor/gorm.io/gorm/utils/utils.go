@@ -32,16 +32,11 @@ func sourceDir(file string) string {
 
 // FileWithLineNum return the file name and line number of the current file
 func FileWithLineNum() string {
-	pcs := [13]uintptr{}
-	// the third caller usually from gorm internal
-	len := runtime.Callers(3, pcs[:])
-	frames := runtime.CallersFrames(pcs[:len])
-	for i := 0; i < len; i++ {
-		// second return value is "more", not "ok"
-		frame, _ := frames.Next()
-		if (!strings.HasPrefix(frame.File, gormSourceDir) ||
-			strings.HasSuffix(frame.File, "_test.go")) && !strings.HasSuffix(frame.File, ".gen.go") {
-			return string(strconv.AppendInt(append([]byte(frame.File), ':'), int64(frame.Line), 10))
+	// the second caller usually from gorm internal, so set i start from 2
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if ok && (!strings.HasPrefix(file, gormSourceDir) || strings.HasSuffix(file, "_test.go")) {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
 		}
 	}
 
@@ -78,11 +73,7 @@ func ToStringKey(values ...interface{}) string {
 		case uint:
 			results[idx] = strconv.FormatUint(uint64(v), 10)
 		default:
-			results[idx] = "nil"
-			vv := reflect.ValueOf(v)
-			if vv.IsValid() && !vv.IsZero() {
-				results[idx] = fmt.Sprint(reflect.Indirect(vv).Interface())
-			}
+			results[idx] = fmt.Sprint(reflect.Indirect(reflect.ValueOf(v)).Interface())
 		}
 	}
 
@@ -98,28 +89,19 @@ func Contains(elems []string, elem string) bool {
 	return false
 }
 
-func AssertEqual(x, y interface{}) bool {
-	if reflect.DeepEqual(x, y) {
-		return true
-	}
-	if x == nil || y == nil {
-		return false
-	}
+func AssertEqual(src, dst interface{}) bool {
+	if !reflect.DeepEqual(src, dst) {
+		if valuer, ok := src.(driver.Valuer); ok {
+			src, _ = valuer.Value()
+		}
 
-	xval := reflect.ValueOf(x)
-	yval := reflect.ValueOf(y)
-	if xval.Kind() == reflect.Ptr && xval.IsNil() ||
-		yval.Kind() == reflect.Ptr && yval.IsNil() {
-		return false
-	}
+		if valuer, ok := dst.(driver.Valuer); ok {
+			dst, _ = valuer.Value()
+		}
 
-	if valuer, ok := x.(driver.Valuer); ok {
-		x, _ = valuer.Value()
+		return reflect.DeepEqual(src, dst)
 	}
-	if valuer, ok := y.(driver.Valuer); ok {
-		y, _ = valuer.Value()
-	}
-	return reflect.DeepEqual(x, y)
+	return true
 }
 
 func ToString(value interface{}) string {

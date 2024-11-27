@@ -21,25 +21,23 @@ package privilege
 import (
 	"context"
 
-	"google.golang.org/protobuf/proto"
-
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"google.golang.org/protobuf/proto"
 )
 
 // ImpersonateCmd - Windows only, impersonate a user token
-func ImpersonateCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func ImpersonateCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	username := args[0]
+	username := ctx.Args.String("username")
 	impersonate, err := con.Rpc.Impersonate(context.Background(), &sliverpb.ImpersonateReq{
-		Request:  con.ActiveTarget.Request(cmd),
+		Request:  con.ActiveTarget.Request(ctx),
 		Username: username,
 	})
 	if err != nil {
@@ -63,7 +61,7 @@ func ImpersonateCmd(cmd *cobra.Command, con *console.SliverClient, args []string
 }
 
 // PrintImpersonate - Print the results of the attempted impersonation
-func PrintImpersonate(impersonate *sliverpb.Impersonate, username string, con *console.SliverClient) {
+func PrintImpersonate(impersonate *sliverpb.Impersonate, username string, con *console.SliverConsoleClient) {
 	if impersonate.Response != nil && impersonate.Response.GetErr() != "" {
 		con.PrintErrorf("%s\n", impersonate.Response.GetErr())
 		return

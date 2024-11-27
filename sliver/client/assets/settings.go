@@ -20,7 +20,7 @@ package assets
 
 import (
 	"encoding/json"
-	"os"
+	"io/ioutil"
 	"path/filepath"
 )
 
@@ -36,14 +36,12 @@ type ClientSettings struct {
 	SmallTermWidth    int    `json:"small_term_width"`
 	AlwaysOverflow    bool   `json:"always_overflow"`
 	VimMode           bool   `json:"vim_mode"`
-	UserConnect       bool   `json:"user_connect"`
-	ConsoleLogs       bool   `json:"console_logs"`
 }
 
 // LoadSettings - Load the client settings from disk
 func LoadSettings() (*ClientSettings, error) {
 	rootDir, _ := filepath.Abs(GetRootAppDir())
-	data, err := os.ReadFile(filepath.Join(rootDir, settingsFileName))
+	data, err := ioutil.ReadFile(filepath.Join(rootDir, settingsFileName))
 	if err != nil {
 		return defaultSettings(), err
 	}
@@ -63,7 +61,6 @@ func defaultSettings() *ClientSettings {
 		SmallTermWidth:    170,
 		AlwaysOverflow:    false,
 		VimMode:           false,
-		ConsoleLogs:       true,
 	}
 }
 
@@ -77,6 +74,6 @@ func SaveSettings(settings *ClientSettings) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(filepath.Join(rootDir, settingsFileName), data, 0o600)
+	err = ioutil.WriteFile(filepath.Join(rootDir, settingsFileName), data, 0600)
 	return err
 }

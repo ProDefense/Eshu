@@ -338,7 +338,6 @@ var CAPI = map[string]struct{}{
 	"poll":                             {},
 	"popen":                            {},
 	"pow":                              {},
-	"pread":                            {},
 	"printf":                           {},
 	"pselect":                          {},
 	"pthread_attr_destroy":             {},

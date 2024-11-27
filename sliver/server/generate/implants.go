@@ -30,14 +30,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/server/assets"
 	"github.com/bishopfox/sliver/server/db"
 	"github.com/bishopfox/sliver/server/db/models"
-	"github.com/bishopfox/sliver/server/encoders"
 	"github.com/bishopfox/sliver/server/log"
 	"github.com/bishopfox/sliver/server/watchtower"
-	"github.com/gofrs/uuid"
 	"gorm.io/gorm/clause"
 )
 
@@ -61,40 +58,19 @@ func getBuildsDir() (string, error) {
 }
 
 // ImplantConfigSave - Save only the config to the database
-func ImplantConfigSave(config *clientpb.ImplantConfig) (*clientpb.ImplantConfig, error) {
-
-	dbConfig, err := db.ImplantConfigByID(config.ID)
-	if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
-		return nil, err
-	}
-
-	modelConfig := models.ImplantConfigFromProtobuf(config)
+func ImplantConfigSave(config *models.ImplantConfig) error {
 	dbSession := db.Session()
-	if errors.Is(err, db.ErrRecordNotFound) {
-		err = dbSession.Clauses(clause.OnConflict{
-			UpdateAll: true,
-		}).Create(modelConfig).Error
-
-	} else {
-		id, _ := uuid.FromString(dbConfig.ImplantProfileID)
-		if id == uuid.Nil {
-			modelConfig.ImplantProfileID = nil
-		} else {
-			modelConfig.ImplantProfileID = &id
-		}
-
-		// this avoids gorm saving duplicate c2 objects ...
-		tempC2 := modelConfig.C2
-		modelConfig.C2 = nil
-		err = dbSession.Save(modelConfig).Error
-		modelConfig.C2 = tempC2
+	result := dbSession.Clauses(clause.OnConflict{
+		UpdateAll: true,
+	}).Create(&config)
+	if result.Error != nil {
+		return result.Error
 	}
-
-	return modelConfig.ToProtobuf(), err
+	return nil
 }
 
 // ImplantBuildSave - Saves a binary file into the database
-func ImplantBuildSave(build *clientpb.ImplantBuild, config *clientpb.ImplantConfig, fPath string) error {
+func ImplantBuildSave(name string, config *models.ImplantConfig, fPath string) error {
 	rootAppDir, _ := filepath.Abs(assets.GetRootAppDir())
 	fPath, _ = filepath.Abs(fPath)
 	if !strings.HasPrefix(fPath, rootAppDir) {
@@ -110,74 +86,21 @@ func ImplantBuildSave(build *clientpb.ImplantBuild, config *clientpb.ImplantConf
 	if err != nil {
 		return err
 	}
-
-	implantID := uint64(encoders.GetRandomID())
-	err = db.SaveResourceID(&clientpb.ResourceID{
-		Type:  "",
-		Value: implantID,
-		Name:  build.Name,
-	})
-	if err != nil {
-		return err
+	dbSession := db.Session()
+	implantBuild := &models.ImplantBuild{
+		Name:          name,
+		ImplantConfig: (*config),
+		MD5:           md5Hash,
+		SHA1:          sha1Hash,
+		SHA256:        sha256Hash,
 	}
-
-	build.ImplantID = implantID
-	build.MD5 = md5Hash
-	build.SHA1 = sha1Hash
-	build.SHA256 = sha256Hash
-
-	config, err = db.SaveImplantConfig(config)
-	if err != nil {
-		return err
-	}
-
-	build.ImplantConfigID = config.ID
-	implantBuild, err := db.SaveImplantBuild(build)
-	if err != nil {
-		return err
-	}
-
 	watchtower.AddImplantToWatchlist(implantBuild)
+	result := dbSession.Create(&implantBuild)
+	if result.Error != nil {
+		return result.Error
+	}
 	storageLog.Infof("%s -> %s", implantBuild.ID, implantBuild.Name)
-	return os.WriteFile(filepath.Join(buildsDir, implantBuild.ID), data, 0600)
-}
-
-func SaveStage(build *clientpb.ImplantBuild, config *clientpb.ImplantConfig, stage2 []byte, stageType string) error {
-	md5Hash, sha1Hash, sha256Hash := computeHashes(stage2)
-	buildsDir, err := getBuildsDir()
-	if err != nil {
-		return err
-	}
-
-	implantID := uint64(encoders.GetRandomID())
-	err = db.SaveResourceID(&clientpb.ResourceID{
-		Type:  stageType,
-		Value: implantID,
-		Name:  build.Name,
-	})
-	if err != nil {
-		return err
-	}
-
-	build.ImplantID = implantID
-	build.MD5 = md5Hash
-	build.SHA1 = sha1Hash
-	build.SHA256 = sha256Hash
-
-	config, err = db.SaveImplantConfig(config)
-	if err != nil {
-		return err
-	}
-
-	build.ImplantConfigID = config.ID
-	implantBuild, err := db.SaveImplantBuild(build)
-	if err != nil {
-		return err
-	}
-
-	watchtower.AddImplantToWatchlist(implantBuild)
-	storageLog.Infof("%s -> %s", implantBuild.ID, implantBuild.Name)
-	return os.WriteFile(filepath.Join(buildsDir, implantBuild.ID), stage2, 0600)
+	return os.WriteFile(filepath.Join(buildsDir, implantBuild.ID.String()), data, 0600)
 }
 
 func computeHashes(data []byte) (string, string, string) {
@@ -191,12 +114,12 @@ func computeHashes(data []byte) (string, string, string) {
 }
 
 // ImplantFileFromBuild - Saves a binary file into the database
-func ImplantFileFromBuild(build *clientpb.ImplantBuild) ([]byte, error) {
+func ImplantFileFromBuild(build *models.ImplantBuild) ([]byte, error) {
 	buildsDir, err := getBuildsDir()
 	if err != nil {
 		return nil, err
 	}
-	buildFilePath := path.Join(buildsDir, build.ID)
+	buildFilePath := path.Join(buildsDir, build.ID.String())
 	if _, err := os.Stat(buildFilePath); os.IsNotExist(err) {
 		return nil, ErrImplantBuildFileNotFound
 	}
@@ -204,12 +127,12 @@ func ImplantFileFromBuild(build *clientpb.ImplantBuild) ([]byte, error) {
 }
 
 // ImplantFileDelete - Delete the implant from the file system
-func ImplantFileDelete(build *clientpb.ImplantBuild) error {
+func ImplantFileDelete(build *models.ImplantBuild) error {
 	buildsDir, err := getBuildsDir()
 	if err != nil {
 		return err
 	}
-	buildFilePath := filepath.Join(buildsDir, build.ID)
+	buildFilePath := filepath.Join(buildsDir, build.ID.String())
 	if _, err := os.Stat(buildFilePath); os.IsNotExist(err) {
 		return ErrImplantBuildFileNotFound
 	}

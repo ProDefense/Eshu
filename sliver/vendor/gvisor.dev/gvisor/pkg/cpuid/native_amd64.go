@@ -215,15 +215,10 @@ func readMaxCPUFreq() {
 
 }
 
-// xgetbv reads an extended control register.
-func xgetbv(reg uintptr) uint64
-
-// archInitialize initializes hostFeatureSet.
-func archInitialize() {
+func init() {
 	hostFeatureSet = FeatureSet{
 		Function: &Native{},
 	}.Fixed()
 
 	readMaxCPUFreq()
-	initHWCap()
 }

@@ -6,13 +6,12 @@ import (
 )
 
 // RenderMarkdown renders the Table in Markdown format. Example:
-//
-//	| # | First Name | Last Name | Salary |  |
-//	| ---:| --- | --- | ---:| --- |
-//	| 1 | Arya | Stark | 3000 |  |
-//	| 20 | Jon | Snow | 2000 | You know nothing, Jon Snow! |
-//	| 300 | Tyrion | Lannister | 5000 |  |
-//	|  |  | Total | 10000 |  |
+//  | # | First Name | Last Name | Salary |  |
+//  | ---:| --- | --- | ---:| --- |
+//  | 1 | Arya | Stark | 3000 |  |
+//  | 20 | Jon | Snow | 2000 | You know nothing, Jon Snow! |
+//  | 300 | Tyrion | Lannister | 5000 |  |
+//  |  |  | Total | 10000 |  |
 func (t *Table) RenderMarkdown() string {
 	t.initForRender()
 
@@ -55,8 +54,12 @@ func (t *Table) markdownRenderRow(out *strings.Builder, row rowStr, hint renderH
 				colStr = row[colIdx]
 			}
 			out.WriteRune(' ')
-			colStr = strings.ReplaceAll(colStr, "|", "\\|")
-			colStr = strings.ReplaceAll(colStr, "\n", "<br/>")
+			if strings.Contains(colStr, "|") {
+				colStr = strings.Replace(colStr, "|", "\\|", -1)
+			}
+			if strings.Contains(colStr, "\n") {
+				colStr = strings.Replace(colStr, "\n", "<br/>", -1)
+			}
 			out.WriteString(colStr)
 			out.WriteRune(' ')
 		}
@@ -91,6 +94,7 @@ func (t *Table) markdownRenderRows(out *strings.Builder, rows []rowStr, hint ren
 
 func (t *Table) markdownRenderRowsFooter(out *strings.Builder) {
 	t.markdownRenderRows(out, t.rowsFooter, renderHint{isFooterRow: true})
+
 }
 
 func (t *Table) markdownRenderRowsHeader(out *strings.Builder) {

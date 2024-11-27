@@ -350,7 +350,6 @@ var CAPI = map[string]struct{}{
 	"popen":                            {},
 	"posix_fadvise":                    {},
 	"pow":                              {},
-	"pread":                            {},
 	"printf":                           {},
 	"pselect":                          {},
 	"pthread_attr_destroy":             {},

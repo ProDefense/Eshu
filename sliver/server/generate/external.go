@@ -20,36 +20,22 @@ package generate
 
 import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/bishopfox/sliver/server/db"
+	"github.com/bishopfox/sliver/server/cryptography"
 	"github.com/bishopfox/sliver/server/db/models"
 )
 
 // SliverExternal - Generates the cryptographic keys for the implant but compiles no code
-func SliverExternal(name string, config *clientpb.ImplantConfig) (*clientpb.ExternalImplantConfig, error) {
-	config.IncludeMTLS = models.IsC2Enabled([]string{"mtls"}, config.C2)
-	config.IncludeWG = models.IsC2Enabled([]string{"wg"}, config.C2)
-	config.IncludeHTTP = models.IsC2Enabled([]string{"http", "https"}, config.C2)
-	config.IncludeDNS = models.IsC2Enabled([]string{"dns"}, config.C2)
-	config.IncludeNamePipe = models.IsC2Enabled([]string{"namedpipe"}, config.C2)
-	config.IncludeTCP = models.IsC2Enabled([]string{"tcppivot"}, config.C2)
-
-	build, err := GenerateConfig(name, config)
+func SliverExternal(name string, config *models.ImplantConfig) (*clientpb.ExternalImplantConfig, error) {
+	err := GenerateConfig(name, config, true)
 	if err != nil {
 		return nil, err
 	}
-	config, err = db.SaveImplantConfig(config)
+	otpSecret, err := cryptography.TOTPServerSecret()
 	if err != nil {
 		return nil, err
 	}
-
-	build.ImplantConfigID = config.ID
-	implantBuild, err := db.SaveImplantBuild(build)
-	if err != nil {
-		return nil, err
-	}
-
 	return &clientpb.ExternalImplantConfig{
-		Config: config,
-		Build:  implantBuild,
+		Config:    config.ToProtobuf(),
+		OTPSecret: otpSecret,
 	}, nil
 }

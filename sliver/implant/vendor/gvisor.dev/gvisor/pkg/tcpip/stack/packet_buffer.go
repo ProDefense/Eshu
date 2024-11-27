@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"io"
 
-	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -34,7 +34,7 @@ const (
 )
 
 var pkPool = sync.Pool{
-	New: func() any {
+	New: func() interface{} {
 		return &PacketBuffer{}
 	},
 }
@@ -47,7 +47,7 @@ type PacketBufferOptions struct {
 
 	// Payload is the initial unparsed data for the new packet. If set, it will
 	// be owned by the new packet.
-	Payload buffer.Buffer
+	Payload bufferv2.Buffer
 
 	// IsForwardedPacket identifies that the PacketBuffer being created is for a
 	// forwarded packet.
@@ -57,9 +57,6 @@ type PacketBufferOptions struct {
 	// referenced (released back to the pool).
 	OnRelease func()
 }
-
-// PacketBufferPtr is a pointer to a PacketBuffer.
-type PacketBufferPtr = *PacketBuffer
 
 // A PacketBuffer contains all the data of a network packet.
 //
@@ -74,7 +71,7 @@ type PacketBufferPtr = *PacketBuffer
 // reference count to 1. Owners should call `DecRef()` when they are finished
 // with the buffer to return it to the pool.
 //
-// Internal structure: A PacketBuffer holds a pointer to buffer.Buffer, which
+// Internal structure: A PacketBuffer holds a pointer to bufferv2.Buffer, which
 // exposes a logically-contiguous byte storage. The underlying storage structure
 // is abstracted out, and should not be a concern here for most of the time.
 //
@@ -110,7 +107,7 @@ type PacketBuffer struct {
 
 	// buf is the underlying buffer for the packet. See struct level docs for
 	// details.
-	buf      buffer.Buffer
+	buf      bufferv2.Buffer
 	reserved int
 	pushed   int
 	consumed int
@@ -157,9 +154,9 @@ type PacketBuffer struct {
 	// NICID is the ID of the last interface the network packet was handled at.
 	NICID tcpip.NICID
 
-	// RXChecksumValidated indicates that checksum verification may be
-	// safely skipped.
-	RXChecksumValidated bool
+	// RXTransportChecksumValidated indicates that transport checksum verification
+	// may be safely skipped.
+	RXTransportChecksumValidated bool
 
 	// NetworkPacketInfo holds an incoming packet's network-layer information.
 	NetworkPacketInfo NetworkPacketInfo
@@ -172,11 +169,11 @@ type PacketBuffer struct {
 }
 
 // NewPacketBuffer creates a new PacketBuffer with opts.
-func NewPacketBuffer(opts PacketBufferOptions) PacketBufferPtr {
+func NewPacketBuffer(opts PacketBufferOptions) *PacketBuffer {
 	pk := pkPool.Get().(*PacketBuffer)
 	pk.reset()
 	if opts.ReserveHeaderBytes != 0 {
-		v := buffer.NewViewSize(opts.ReserveHeaderBytes)
+		v := bufferv2.NewViewSize(opts.ReserveHeaderBytes)
 		pk.buf.Append(v)
 		pk.reserved = opts.ReserveHeaderBytes
 	}
@@ -190,7 +187,7 @@ func NewPacketBuffer(opts PacketBufferOptions) PacketBufferPtr {
 }
 
 // IncRef increments the PacketBuffer's refcount.
-func (pk PacketBufferPtr) IncRef() PacketBufferPtr {
+func (pk *PacketBuffer) IncRef() *PacketBuffer {
 	pk.packetBufferRefs.IncRef()
 	return pk
 }
@@ -198,7 +195,7 @@ func (pk PacketBufferPtr) IncRef() PacketBufferPtr {
 // DecRef decrements the PacketBuffer's refcount. If the refcount is
 // decremented to zero, the PacketBuffer is returned to the PacketBuffer
 // pool.
-func (pk PacketBufferPtr) DecRef() {
+func (pk *PacketBuffer) DecRef() {
 	pk.packetBufferRefs.DecRef(func() {
 		if pk.onRelease != nil {
 			pk.onRelease()
@@ -209,24 +206,24 @@ func (pk PacketBufferPtr) DecRef() {
 	})
 }
 
-func (pk PacketBufferPtr) reset() {
+func (pk *PacketBuffer) reset() {
 	*pk = PacketBuffer{}
 }
 
 // ReservedHeaderBytes returns the number of bytes initially reserved for
 // headers.
-func (pk PacketBufferPtr) ReservedHeaderBytes() int {
+func (pk *PacketBuffer) ReservedHeaderBytes() int {
 	return pk.reserved
 }
 
 // AvailableHeaderBytes returns the number of bytes currently available for
 // headers. This is relevant to PacketHeader.Push method only.
-func (pk PacketBufferPtr) AvailableHeaderBytes() int {
+func (pk *PacketBuffer) AvailableHeaderBytes() int {
 	return pk.reserved - pk.pushed
 }
 
 // VirtioNetHeader returns the handle to virtio-layer header.
-func (pk PacketBufferPtr) VirtioNetHeader() PacketHeader {
+func (pk *PacketBuffer) VirtioNetHeader() PacketHeader {
 	return PacketHeader{
 		pk:  pk,
 		typ: virtioNetHeader,
@@ -234,7 +231,7 @@ func (pk PacketBufferPtr) VirtioNetHeader() PacketHeader {
 }
 
 // LinkHeader returns the handle to link-layer header.
-func (pk PacketBufferPtr) LinkHeader() PacketHeader {
+func (pk *PacketBuffer) LinkHeader() PacketHeader {
 	return PacketHeader{
 		pk:  pk,
 		typ: linkHeader,
@@ -242,7 +239,7 @@ func (pk PacketBufferPtr) LinkHeader() PacketHeader {
 }
 
 // NetworkHeader returns the handle to network-layer header.
-func (pk PacketBufferPtr) NetworkHeader() PacketHeader {
+func (pk *PacketBuffer) NetworkHeader() PacketHeader {
 	return PacketHeader{
 		pk:  pk,
 		typ: networkHeader,
@@ -250,7 +247,7 @@ func (pk PacketBufferPtr) NetworkHeader() PacketHeader {
 }
 
 // TransportHeader returns the handle to transport-layer header.
-func (pk PacketBufferPtr) TransportHeader() PacketHeader {
+func (pk *PacketBuffer) TransportHeader() PacketHeader {
 	return PacketHeader{
 		pk:  pk,
 		typ: transportHeader,
@@ -258,31 +255,31 @@ func (pk PacketBufferPtr) TransportHeader() PacketHeader {
 }
 
 // HeaderSize returns the total size of all headers in bytes.
-func (pk PacketBufferPtr) HeaderSize() int {
+func (pk *PacketBuffer) HeaderSize() int {
 	return pk.pushed + pk.consumed
 }
 
 // Size returns the size of packet in bytes.
-func (pk PacketBufferPtr) Size() int {
+func (pk *PacketBuffer) Size() int {
 	return int(pk.buf.Size()) - pk.headerOffset()
 }
 
 // MemSize returns the estimation size of the pk in memory, including backing
 // buffer data.
-func (pk PacketBufferPtr) MemSize() int {
+func (pk *PacketBuffer) MemSize() int {
 	return int(pk.buf.Size()) + PacketBufferStructSize
 }
 
 // Data returns the handle to data portion of pk.
-func (pk PacketBufferPtr) Data() PacketData {
+func (pk *PacketBuffer) Data() PacketData {
 	return PacketData{pk: pk}
 }
 
 // AsSlices returns the underlying storage of the whole packet.
-func (pk PacketBufferPtr) AsSlices() [][]byte {
+func (pk *PacketBuffer) AsSlices() [][]byte {
 	var views [][]byte
 	offset := pk.headerOffset()
-	pk.buf.SubApply(offset, int(pk.buf.Size())-offset, func(v *buffer.View) {
+	pk.buf.SubApply(offset, int(pk.buf.Size())-offset, func(v *bufferv2.View) {
 		views = append(views, v.AsSlice())
 	})
 	return views
@@ -290,7 +287,7 @@ func (pk PacketBufferPtr) AsSlices() [][]byte {
 
 // ToBuffer returns a caller-owned copy of the underlying storage of the whole
 // packet.
-func (pk PacketBufferPtr) ToBuffer() buffer.Buffer {
+func (pk *PacketBuffer) ToBuffer() bufferv2.Buffer {
 	b := pk.buf.Clone()
 	b.TrimFront(int64(pk.headerOffset()))
 	return b
@@ -298,28 +295,28 @@ func (pk PacketBufferPtr) ToBuffer() buffer.Buffer {
 
 // ToView returns a caller-owned copy of the underlying storage of the whole
 // packet as a view.
-func (pk PacketBufferPtr) ToView() *buffer.View {
-	p := buffer.NewView(int(pk.buf.Size()))
+func (pk *PacketBuffer) ToView() *bufferv2.View {
+	p := bufferv2.NewView(int(pk.buf.Size()))
 	offset := pk.headerOffset()
-	pk.buf.SubApply(offset, int(pk.buf.Size())-offset, func(v *buffer.View) {
+	pk.buf.SubApply(offset, int(pk.buf.Size())-offset, func(v *bufferv2.View) {
 		p.Write(v.AsSlice())
 	})
 	return p
 }
 
-func (pk PacketBufferPtr) headerOffset() int {
+func (pk *PacketBuffer) headerOffset() int {
 	return pk.reserved - pk.pushed
 }
 
-func (pk PacketBufferPtr) headerOffsetOf(typ headerType) int {
+func (pk *PacketBuffer) headerOffsetOf(typ headerType) int {
 	return pk.reserved + pk.headers[typ].offset
 }
 
-func (pk PacketBufferPtr) dataOffset() int {
+func (pk *PacketBuffer) dataOffset() int {
 	return pk.reserved + pk.consumed
 }
 
-func (pk PacketBufferPtr) push(typ headerType, size int) []byte {
+func (pk *PacketBuffer) push(typ headerType, size int) []byte {
 	h := &pk.headers[typ]
 	if h.length > 0 {
 		panic(fmt.Sprintf("push(%s, %d) called after previous push", typ, size))
@@ -334,7 +331,7 @@ func (pk PacketBufferPtr) push(typ headerType, size int) []byte {
 	return view.AsSlice()
 }
 
-func (pk PacketBufferPtr) consume(typ headerType, size int) (v []byte, consumed bool) {
+func (pk *PacketBuffer) consume(typ headerType, size int) (v []byte, consumed bool) {
 	h := &pk.headers[typ]
 	if h.length > 0 {
 		panic(fmt.Sprintf("consume must not be called twice: type %s", typ))
@@ -349,10 +346,10 @@ func (pk PacketBufferPtr) consume(typ headerType, size int) (v []byte, consumed 
 	return view.AsSlice(), true
 }
 
-func (pk PacketBufferPtr) headerView(typ headerType) buffer.View {
+func (pk *PacketBuffer) headerView(typ headerType) bufferv2.View {
 	h := &pk.headers[typ]
 	if h.length == 0 {
-		return buffer.View{}
+		return bufferv2.View{}
 	}
 	v, ok := pk.buf.PullUp(pk.headerOffsetOf(typ), h.length)
 	if !ok {
@@ -363,7 +360,7 @@ func (pk PacketBufferPtr) headerView(typ headerType) buffer.View {
 
 // Clone makes a semi-deep copy of pk. The underlying packet payload is
 // shared. Hence, no modifications is done to underlying packet payload.
-func (pk PacketBufferPtr) Clone() PacketBufferPtr {
+func (pk *PacketBuffer) Clone() *PacketBuffer {
 	newPk := pkPool.Get().(*PacketBuffer)
 	newPk.reset()
 	newPk.buf = pk.buf.Clone()
@@ -380,7 +377,7 @@ func (pk PacketBufferPtr) Clone() PacketBufferPtr {
 	newPk.TransportProtocolNumber = pk.TransportProtocolNumber
 	newPk.PktType = pk.PktType
 	newPk.NICID = pk.NICID
-	newPk.RXChecksumValidated = pk.RXChecksumValidated
+	newPk.RXTransportChecksumValidated = pk.RXTransportChecksumValidated
 	newPk.NetworkPacketInfo = pk.NetworkPacketInfo
 	newPk.tuple = pk.tuple
 	newPk.InitRefs()
@@ -389,18 +386,18 @@ func (pk PacketBufferPtr) Clone() PacketBufferPtr {
 
 // ReserveHeaderBytes prepends reserved space for headers at the front
 // of the underlying buf. Can only be called once per packet.
-func (pk PacketBufferPtr) ReserveHeaderBytes(reserved int) {
+func (pk *PacketBuffer) ReserveHeaderBytes(reserved int) {
 	if pk.reserved != 0 {
 		panic(fmt.Sprintf("ReserveHeaderBytes(...) called on packet with reserved=%d, want reserved=0", pk.reserved))
 	}
 	pk.reserved = reserved
-	pk.buf.Prepend(buffer.NewViewSize(reserved))
+	pk.buf.Prepend(bufferv2.NewViewSize(reserved))
 }
 
 // Network returns the network header as a header.Network.
 //
 // Network should only be called when NetworkHeader has been set.
-func (pk PacketBufferPtr) Network() header.Network {
+func (pk *PacketBuffer) Network() header.Network {
 	switch netProto := pk.NetworkProtocolNumber; netProto {
 	case header.IPv4ProtocolNumber:
 		return header.IPv4(pk.NetworkHeader().Slice())
@@ -416,7 +413,7 @@ func (pk PacketBufferPtr) Network() header.Network {
 //
 // See PacketBuffer.Data for details about how a packet buffer holds an inbound
 // packet.
-func (pk PacketBufferPtr) CloneToInbound() PacketBufferPtr {
+func (pk *PacketBuffer) CloneToInbound() *PacketBuffer {
 	newPk := pkPool.Get().(*PacketBuffer)
 	newPk.reset()
 	newPk.buf = pk.buf.Clone()
@@ -432,12 +429,10 @@ func (pk PacketBufferPtr) CloneToInbound() PacketBufferPtr {
 //
 // The returned packet buffer will have the network and transport headers
 // set if the original packet buffer did.
-func (pk PacketBufferPtr) DeepCopyForForwarding(reservedHeaderBytes int) PacketBufferPtr {
-	payload := BufferSince(pk.NetworkHeader())
-	defer payload.Release()
+func (pk *PacketBuffer) DeepCopyForForwarding(reservedHeaderBytes int) *PacketBuffer {
 	newPk := NewPacketBuffer(PacketBufferOptions{
 		ReserveHeaderBytes: reservedHeaderBytes,
-		Payload:            payload.DeepClone(),
+		Payload:            BufferSince(pk.NetworkHeader()),
 		IsForwardedPacket:  true,
 	})
 
@@ -462,11 +457,6 @@ func (pk PacketBufferPtr) DeepCopyForForwarding(reservedHeaderBytes int) PacketB
 	return newPk
 }
 
-// IsNil returns whether the pointer is logically nil.
-func (pk PacketBufferPtr) IsNil() bool {
-	return pk == nil
-}
-
 // headerInfo stores metadata about a header in a packet.
 //
 // +stateify savable
@@ -481,13 +471,13 @@ type headerInfo struct {
 
 // PacketHeader is a handle object to a header in the underlying packet.
 type PacketHeader struct {
-	pk  PacketBufferPtr
+	pk  *PacketBuffer
 	typ headerType
 }
 
 // View returns an caller-owned copy of the underlying storage of h as a
-// *buffer.View.
-func (h PacketHeader) View() *buffer.View {
+// *bufferv2.View.
+func (h PacketHeader) View() *bufferv2.View {
 	view := h.pk.headerView(h.typ)
 	if view.Size() == 0 {
 		return nil
@@ -523,7 +513,7 @@ func (h PacketHeader) Consume(size int) (v []byte, consumed bool) {
 //
 // +stateify savable
 type PacketData struct {
-	pk PacketBufferPtr
+	pk *PacketBuffer
 }
 
 // PullUp returns a contiguous slice of size bytes from the beginning of d.
@@ -553,7 +543,7 @@ func (d PacketData) ReadTo(dst io.Writer, peek bool) (int, error) {
 		done int
 	)
 	offset := d.pk.dataOffset()
-	d.pk.buf.SubApply(offset, int(d.pk.buf.Size())-offset, func(v *buffer.View) {
+	d.pk.buf.SubApply(offset, int(d.pk.buf.Size())-offset, func(v *bufferv2.View) {
 		if err != nil {
 			return
 		}
@@ -581,8 +571,8 @@ func (d PacketData) CapLength(length int) {
 	d.pk.buf.Truncate(int64(length + d.pk.dataOffset()))
 }
 
-// ToBuffer returns the underlying storage of d in a buffer.Buffer.
-func (d PacketData) ToBuffer() buffer.Buffer {
+// ToBuffer returns the underlying storage of d in a bufferv2.Buffer.
+func (d PacketData) ToBuffer() bufferv2.Buffer {
 	buf := d.pk.buf.Clone()
 	offset := d.pk.dataOffset()
 	buf.TrimFront(int64(offset))
@@ -590,25 +580,25 @@ func (d PacketData) ToBuffer() buffer.Buffer {
 }
 
 // AppendView appends v into d, taking the ownership of v.
-func (d PacketData) AppendView(v *buffer.View) {
+func (d PacketData) AppendView(v *bufferv2.View) {
 	d.pk.buf.Append(v)
 }
 
 // MergeBuffer merges b into d and clears b.
-func (d PacketData) MergeBuffer(b *buffer.Buffer) {
+func (d PacketData) MergeBuffer(b *bufferv2.Buffer) {
 	d.pk.buf.Merge(b)
 }
 
 // MergeFragment appends the data portion of frag to dst. It modifies
 // frag and frag should not be used again.
-func MergeFragment(dst, frag PacketBufferPtr) {
+func MergeFragment(dst, frag *PacketBuffer) {
 	frag.buf.TrimFront(int64(frag.dataOffset()))
 	dst.buf.Merge(&frag.buf)
 }
 
 // ReadFrom moves at most count bytes from the beginning of src to the end
 // of d and returns the number of bytes moved.
-func (d PacketData) ReadFrom(src *buffer.Buffer, count int) int {
+func (d PacketData) ReadFrom(src *bufferv2.Buffer, count int) int {
 	toRead := int64(count)
 	if toRead > src.Size() {
 		toRead = src.Size()
@@ -661,20 +651,9 @@ func (d PacketData) AsRange() Range {
 	}
 }
 
-// Checksum returns a checksum over the data payload of the packet.
-func (d PacketData) Checksum() uint16 {
-	return d.pk.buf.Checksum(d.pk.dataOffset())
-}
-
-// ChecksumAtOffset returns a checksum over the data payload of the packet
-// starting from offset.
-func (d PacketData) ChecksumAtOffset(offset int) uint16 {
-	return d.pk.buf.Checksum(offset)
-}
-
 // Range represents a contiguous subportion of a PacketBuffer.
 type Range struct {
-	pk     PacketBufferPtr
+	pk     *PacketBuffer
 	offset int
 	length int
 }
@@ -716,33 +695,42 @@ func (r Range) ToSlice() []byte {
 		return nil
 	}
 	all := make([]byte, 0, r.length)
-	r.iterate(func(v *buffer.View) {
+	r.iterate(func(v *bufferv2.View) {
 		all = append(all, v.AsSlice()...)
 	})
 	return all
 }
 
 // ToView returns a caller-owned copy of data in r.
-func (r Range) ToView() *buffer.View {
+func (r Range) ToView() *bufferv2.View {
 	if r.length == 0 {
 		return nil
 	}
-	newV := buffer.NewView(r.length)
-	r.iterate(func(v *buffer.View) {
+	newV := bufferv2.NewView(r.length)
+	r.iterate(func(v *bufferv2.View) {
 		newV.Write(v.AsSlice())
 	})
 	return newV
 }
 
+// Checksum calculates the RFC 1071 checksum for the underlying bytes of r.
+func (r Range) Checksum() uint16 {
+	var c header.Checksumer
+	r.iterate(func(v *bufferv2.View) {
+		c.Add(v.AsSlice())
+	})
+	return c.Checksum()
+}
+
 // iterate calls fn for each piece in r. fn is always called with a non-empty
 // slice.
-func (r Range) iterate(fn func(*buffer.View)) {
+func (r Range) iterate(fn func(*bufferv2.View)) {
 	r.pk.buf.SubApply(r.offset, r.length, fn)
 }
 
 // PayloadSince returns a caller-owned view containing the payload starting from
 // and including a particular header.
-func PayloadSince(h PacketHeader) *buffer.View {
+func PayloadSince(h PacketHeader) *bufferv2.View {
 	offset := h.pk.headerOffset()
 	for i := headerType(0); i < h.typ; i++ {
 		offset += h.pk.headers[i].length
@@ -756,7 +744,7 @@ func PayloadSince(h PacketHeader) *buffer.View {
 
 // BufferSince returns a caller-owned view containing the packet payload
 // starting from and including a particular header.
-func BufferSince(h PacketHeader) buffer.Buffer {
+func BufferSince(h PacketHeader) bufferv2.Buffer {
 	offset := h.pk.headerOffset()
 	for i := headerType(0); i < h.typ; i++ {
 		offset += h.pk.headers[i].length

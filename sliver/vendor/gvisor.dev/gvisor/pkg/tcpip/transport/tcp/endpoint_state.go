@@ -15,7 +15,6 @@
 package tcp
 
 import (
-	"context"
 	"fmt"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
@@ -39,7 +38,7 @@ func (e *endpoint) beforeSave() {
 	case epState == StateInitial || epState == StateBound:
 	case epState.connected() || epState.handshake():
 		if !e.route.HasSaveRestoreCapability() {
-			if !e.route.HasDisconnectOkCapability() {
+			if !e.route.HasDisconncetOkCapability() {
 				panic(&tcpip.ErrSaveRejection{
 					Err: fmt.Errorf("endpoint cannot be saved in connected state: local %s:%d, remote %s:%d", e.TransportEndpointInfo.ID.LocalAddress, e.TransportEndpointInfo.ID.LocalPort, e.TransportEndpointInfo.ID.RemoteAddress, e.TransportEndpointInfo.ID.RemotePort),
 				})
@@ -56,6 +55,10 @@ func (e *endpoint) beforeSave() {
 		// Nothing to do.
 	default:
 		panic(fmt.Sprintf("endpoint in unknown state %v", e.EndpointState()))
+	}
+
+	if e.waiterQueue != nil && !e.waiterQueue.IsEmpty() {
+		panic("endpoint still has waiters upon save")
 	}
 }
 
@@ -110,22 +113,22 @@ func (e *endpoint) loadState(epState EndpointState) {
 }
 
 // afterLoad is invoked by stateify.
-func (e *endpoint) afterLoad(ctx context.Context) {
+func (e *endpoint) afterLoad() {
 	// RacyLoad() can be used because we are initializing e.
 	e.origEndpointState = e.state.RacyLoad()
 	// Restore the endpoint to InitialState as it will be moved to
-	// its origEndpointState during Restore.
+	// its origEndpointState during Resume.
 	e.state = atomicbitops.FromUint32(uint32(StateInitial))
-	stack.RestoreStackFromContext(ctx).RegisterRestoredEndpoint(e)
+	stack.StackFromEnv.RegisterRestoredEndpoint(e)
 }
 
-// Restore implements tcpip.RestoredEndpoint.Restore.
-func (e *endpoint) Restore(s *stack.Stack) {
+// Resume implements tcpip.ResumableEndpoint.Resume.
+func (e *endpoint) Resume(s *stack.Stack) {
 	if !e.EndpointState().closed() {
-		e.keepalive.timer.init(s.Clock(), timerHandler(e, e.keepaliveTimerExpired))
+		e.keepalive.timer.init(s.Clock(), maybeFailTimerHandler(e, e.keepaliveTimerExpired))
 	}
 	if snd := e.snd; snd != nil {
-		snd.resendTimer.init(s.Clock(), timerHandler(e, e.snd.retransmitTimerExpired))
+		snd.resendTimer.init(s.Clock(), maybeFailTimerHandler(e, e.snd.retransmitTimerExpired))
 		snd.reorderTimer.init(s.Clock(), timerHandler(e, e.snd.rc.reorderTimerExpired))
 		snd.probeTimer.init(s.Clock(), timerHandler(e, e.snd.probeTimerExpired))
 	}
@@ -133,6 +136,24 @@ func (e *endpoint) Restore(s *stack.Stack) {
 	e.protocol = protocolFromStack(s)
 	e.ops.InitHandler(e, e.stack, GetTCPSendBufferLimits, GetTCPReceiveBufferLimits)
 	e.segmentQueue.thaw()
+	epState := EndpointState(e.origEndpointState)
+	switch epState {
+	case StateInitial, StateBound, StateListen, StateConnecting, StateEstablished:
+		var ss tcpip.TCPSendBufferSizeRangeOption
+		if err := e.stack.TransportProtocolOption(ProtocolNumber, &ss); err == nil {
+			sendBufferSize := e.getSendBufferSize()
+			if sendBufferSize < ss.Min || sendBufferSize > ss.Max {
+				panic(fmt.Sprintf("endpoint sendBufferSize %d is outside the min and max allowed [%d, %d]", sendBufferSize, ss.Min, ss.Max))
+			}
+		}
+
+		var rs tcpip.TCPReceiveBufferSizeRangeOption
+		if err := e.stack.TransportProtocolOption(ProtocolNumber, &rs); err == nil {
+			if rcvBufSize := e.ops.GetReceiveBufferSize(); rcvBufSize < int64(rs.Min) || rcvBufSize > int64(rs.Max) {
+				panic(fmt.Sprintf("endpoint rcvBufSize %d is outside the min and max allowed [%d, %d]", rcvBufSize, rs.Min, rs.Max))
+			}
+		}
+	}
 
 	bind := func() {
 		e.mu.Lock()
@@ -159,21 +180,17 @@ func (e *endpoint) Restore(s *stack.Stack) {
 		e.setEndpointState(StateBound)
 	}
 
-	epState := EndpointState(e.origEndpointState)
 	switch {
 	case epState.connected():
 		bind()
-		if e.connectingAddress.BitLen() == 0 {
+		if len(e.connectingAddress) == 0 {
 			e.connectingAddress = e.TransportEndpointInfo.ID.RemoteAddress
 			// This endpoint is accepted by netstack but not yet by
 			// the app. If the endpoint is IPv6 but the remote
 			// address is IPv4, we need to connect as IPv6 so that
 			// dual-stack mode can be properly activated.
-			if e.NetProto == header.IPv6ProtocolNumber && e.TransportEndpointInfo.ID.RemoteAddress.BitLen() != header.IPv6AddressSizeBits {
-				e.connectingAddress = tcpip.AddrFrom16Slice(append(
-					[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff},
-					e.TransportEndpointInfo.ID.RemoteAddress.AsSlice()...,
-				))
+			if e.NetProto == header.IPv6ProtocolNumber && len(e.TransportEndpointInfo.ID.RemoteAddress) != header.IPv6AddressSize {
+				e.connectingAddress = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff" + e.TransportEndpointInfo.ID.RemoteAddress
 			}
 		}
 		// Reset the scoreboard to reinitialize the sack information as
@@ -244,7 +261,7 @@ func (e *endpoint) Restore(s *stack.Stack) {
 			panic(fmt.Sprintf("FindRoute failed when restoring endpoint w/ ID: %+v", e.ID))
 		}
 		e.route = r
-		timer, err := newBackoffTimer(e.stack.Clock(), InitialRTO, MaxRTO, timerHandler(e, e.h.retransmitHandlerLocked))
+		timer, err := newBackoffTimer(e.stack.Clock(), InitialRTO, MaxRTO, maybeFailTimerHandler(e, e.h.retransmitHandlerLocked))
 		if err != nil {
 			panic(fmt.Sprintf("newBackOffTimer(_, %s, %s, _) failed: %s", InitialRTO, MaxRTO, err))
 		}

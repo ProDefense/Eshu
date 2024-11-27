@@ -22,29 +22,25 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 	"google.golang.org/protobuf/proto"
 )
 
-// SpawnDllCmd - Spawn execution of a DLL on the remote system.
-func SpawnDllCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// SpawnDllCmd - Spawn execution of a DLL on the remote system
+func SpawnDllCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
-	binPath := args[0]
-	var dllArgs []string
-	if len(args) > 1 {
-		dllArgs = args[1:]
-	}
-
-	processName, _ := cmd.Flags().GetString("process")
-	exportName, _ := cmd.Flags().GetString("export")
-	keepAlive, _ := cmd.Flags().GetBool("keep-alive")
+	dllArgs := strings.Join(ctx.Args.StringList("arguments"), " ")
+	binPath := ctx.Args.String("filepath")
+	processName := ctx.Flags.String("process")
+	exportName := ctx.Flags.String("export")
 
 	binData, err := os.ReadFile(binPath)
 	if err != nil {
@@ -58,8 +54,8 @@ func SpawnDllCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		ProcessName: processName,
 		Args:        dllArgs,
 		EntryPoint:  exportName,
-		Request:     con.ActiveTarget.Request(cmd),
-		Kill:        !keepAlive,
+		Request:     con.ActiveTarget.Request(ctx),
+		Kill:        !ctx.Flags.Bool("keep-alive"),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -77,28 +73,26 @@ func SpawnDllCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 				return
 			}
 
-			HandleSpawnDLLResponse(spawndll, binPath, hostName, cmd, con)
+			HandleSpawnDLLResponse(spawndll, binPath, hostName, ctx, con)
 		})
 		con.PrintAsyncResponse(spawndll.Response)
 	} else {
-		HandleSpawnDLLResponse(spawndll, binPath, hostName, cmd, con)
+		HandleSpawnDLLResponse(spawndll, binPath, hostName, ctx, con)
 	}
 }
 
-func HandleSpawnDLLResponse(spawndll *sliverpb.SpawnDll, binPath string, hostName string, cmd *cobra.Command, con *console.SliverClient) {
-	saveLoot, _ := cmd.Flags().GetBool("loot")
-	lootName, _ := cmd.Flags().GetString("name")
+func HandleSpawnDLLResponse(spawndll *sliverpb.SpawnDll, binPath string, hostName string, ctx *grumble.Context, con *console.SliverConsoleClient) {
+	saveLoot := ctx.Flags.Bool("loot")
+	lootName := ctx.Flags.String("name")
 
 	if spawndll.GetResponse().GetErr() != "" {
 		con.PrintErrorf("Failed to spawn dll: %s\n", spawndll.GetResponse().GetErr())
 		return
 	}
 
-	save, _ := cmd.Flags().GetBool("save")
-
-	PrintExecutionOutput(spawndll.GetResult(), save, cmd.Name(), hostName, con)
+	PrintExecutionOutput(spawndll.GetResult(), ctx.Flags.Bool("save"), ctx.Command.Name, hostName, con)
 
 	if saveLoot {
-		LootExecute([]byte(spawndll.GetResult()), lootName, cmd.Name(), binPath, hostName, con)
+		LootExecute([]byte(spawndll.GetResult()), lootName, ctx.Command.Name, binPath, hostName, con)
 	}
 }

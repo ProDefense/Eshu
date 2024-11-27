@@ -34,9 +34,6 @@ const (
 	// MaxRTO is the maximum allowed value for the retransmit timeout.
 	MaxRTO = 120 * time.Second
 
-	// MinSRTT is the minimum allowed value for smoothed RTT.
-	MinSRTT = 1 * time.Millisecond
-
 	// InitialCwnd is the initial congestion window.
 	InitialCwnd = 10
 
@@ -205,7 +202,7 @@ func newSender(ep *endpoint, iss, irs seqnum.Value, sndWnd seqnum.Size, mss uint
 		s.SndWndScale = uint8(sndWndScale)
 	}
 
-	s.resendTimer.init(s.ep.stack.Clock(), timerHandler(s.ep, s.retransmitTimerExpired))
+	s.resendTimer.init(s.ep.stack.Clock(), maybeFailTimerHandler(s.ep, s.retransmitTimerExpired))
 	s.reorderTimer.init(s.ep.stack.Clock(), timerHandler(s.ep, s.rc.reorderTimerExpired))
 	s.probeTimer.init(s.ep.stack.Clock(), timerHandler(s.ep, s.probeTimerExpired))
 
@@ -387,10 +384,6 @@ func (s *sender) updateRTO(rtt time.Duration) {
 		}
 	}
 
-	if s.rtt.TCPRTTState.SRTT < MinSRTT {
-		s.rtt.TCPRTTState.SRTT = MinSRTT
-	}
-
 	s.RTO = s.rtt.TCPRTTState.SRTT + 4*s.rtt.TCPRTTState.RTTVar
 	s.rtt.Unlock()
 	if s.RTO < s.minRTO {
@@ -437,7 +430,7 @@ func (s *sender) resendSegment() {
 func (s *sender) retransmitTimerExpired() tcpip.Error {
 	// Check if the timer actually expired or if it's a spurious wake due
 	// to a previously orphaned runtime timer.
-	if s.resendTimer.isUninitialized() || !s.resendTimer.checkExpiration() {
+	if s.resendTimer.isZero() || !s.resendTimer.checkExpiration() {
 		return nil
 	}
 
@@ -646,12 +639,12 @@ func (s *sender) NextSeg(nextSegHint *segment) (nextSeg, hint *segment, rescueRt
 		//     1. If there exists a smallest unSACKED sequence number
 		//     'S2' that meets the following 3 criteria for determinig
 		//     loss, the sequence range of one segment of up to SMSS
-		//     octets starting with S2 MUST be returned.
+		//     octects starting with S2 MUST be returned.
 		if !s.ep.scoreboard.IsSACKED(header.SACKBlock{Start: segSeq, End: segSeq.Add(1)}) {
 			// NextSeg():
 			//
 			//    (1.a) S2 is greater than HighRxt
-			//    (1.b) S2 is less than highest octet covered by
+			//    (1.b) S2 is less than highest octect covered by
 			//    any received SACK.
 			if s.FastRecovery.HighRxt.LessThan(segSeq) && segSeq.LessThan(s.ep.scoreboard.maxSACKED) {
 				// NextSeg():
@@ -682,7 +675,7 @@ func (s *sender) NextSeg(nextSegHint *segment) (nextSeg, hint *segment, rescueRt
 			//     retransmission per entry into loss recovery. If
 			//     HighACK is greater than RescueRxt (or RescueRxt
 			//     is undefined), then one segment of upto SMSS
-			//     octets that MUST include the highest outstanding
+			//     octects that MUST include the highest outstanding
 			//     unSACKed sequence number SHOULD be returned, and
 			//     RescueRxt set to RecoveryPoint. HighRxt MUST NOT
 			//     be updated.
@@ -799,7 +792,6 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 		segEnd = seg.sequenceNumber.Add(1)
 		// Update the state to reflect that we have now
 		// queued a FIN.
-		s.ep.updateConnDirectionState(connDirectionStateSndClosed)
 		switch s.ep.EndpointState() {
 		case StateCloseWait:
 			s.ep.setEndpointState(StateLastAck)
@@ -822,7 +814,7 @@ func (s *sender) maybeSendSegment(seg *segment, limit int, end seqnum.Value) (se
 		}
 
 		// If the whole segment or at least 1MSS sized segment cannot
-		// be accommodated in the receiver advertised window, skip
+		// be accomodated in the receiver advertized window, skip
 		// splitting and sending of the segment. ref:
 		// net/ipv4/tcp_output.c::tcp_snd_wnd_test()
 		//
@@ -921,7 +913,7 @@ func (s *sender) postXmit(dataSent bool, shouldScheduleProbe bool) {
 		s.ep.disableKeepaliveTimer()
 	}
 
-	// If the sender has advertised zero receive window and we have
+	// If the sender has advertized zero receive window and we have
 	// data to be sent out, start zero window probing to query the
 	// the remote for it's receive window size.
 	if s.writeNext != nil && s.SndWnd == 0 {
@@ -953,7 +945,7 @@ func (s *sender) postXmit(dataSent bool, shouldScheduleProbe bool) {
 func (s *sender) sendData() {
 	limit := s.MaxPayloadSize
 	if s.gso {
-		limit = int(s.ep.gso.MaxSize - header.TCPTotalHeaderMaximumSize - 1)
+		limit = int(s.ep.gso.MaxSize - header.TCPHeaderMaximumSize)
 	}
 	end := s.SndUna.Add(s.SndWnd)
 
@@ -1091,7 +1083,7 @@ func (s *sender) SetPipe() {
 			//
 			// NOTE: here we mark the whole segment as lost. We do not try
 			// and test every byte in our write buffer as we maintain our
-			// pipe in terms of outstanding packets and not bytes.
+			// pipe in terms of oustanding packets and not bytes.
 			if !s.ep.scoreboard.IsRangeLost(sb) {
 				pipe++
 			}
@@ -1453,7 +1445,7 @@ func (s *sender) handleRcvdSegment(rcvdSeg *segment) {
 	// Stash away the current window size.
 	s.SndWnd = rcvdSeg.window
 
-	// Disable zero window probing if remote advertises a non-zero receive
+	// Disable zero window probing if remote advertizes a non-zero receive
 	// window. This can be with an ACK to the zero window probe (where the
 	// acknumber refers to the already acknowledged byte) OR to any previously
 	// unacknowledged segment.

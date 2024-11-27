@@ -23,33 +23,30 @@ import (
 	"strings"
 )
 
-var dictionary map[int][]string
+// EnglishEncoderID - EncoderID
+const EnglishEncoderID = 31
 
-var rawEnglishDictionary []string
-
-func getEnglishDictionary() []string {
-	return rawEnglishDictionary
-}
+var dictionary *map[int][]string
 
 // English Encoder - An ASCIIEncoder for binary to english text
-type EnglishEncoder struct{}
+type English struct{}
 
 // Encode - Binary => English
-func (e EnglishEncoder) Encode(data []byte) ([]byte, error) {
+func (e English) Encode(data []byte) []byte {
 	if dictionary == nil {
 		buildDictionary()
 	}
 	words := []string{}
 	for _, b := range data {
-		possibleWords := dictionary[int(b)]
+		possibleWords := (*dictionary)[int(b)]
 		index := insecureRand.Intn(len(possibleWords))
 		words = append(words, possibleWords[index])
 	}
-	return []byte(strings.Join(words, " ")), nil
+	return []byte(strings.Join(words, " "))
 }
 
 // Decode - English => Binary
-func (e EnglishEncoder) Decode(words []byte) ([]byte, error) {
+func (e English) Decode(words []byte) ([]byte, error) {
 	wordList := strings.Split(string(words), " ")
 	data := []byte{}
 	for _, word := range wordList {
@@ -64,11 +61,11 @@ func (e EnglishEncoder) Decode(words []byte) ([]byte, error) {
 }
 
 func buildDictionary() {
-	dictionary = map[int][]string{}
+	dictionary = &map[int][]string{}
 	for _, word := range getEnglishDictionary() {
 		word = strings.TrimSpace(word)
 		sum := sumWord(word)
-		dictionary[sum] = append(dictionary[sum], word)
+		(*dictionary)[sum] = append((*dictionary)[sum], word)
 	}
 }
 

@@ -24,30 +24,28 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// MemfilesRmCmd - Remove a memfile.
-func MemfilesRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// MemfilesRmCmd - Remove a memfile
+func MemfilesRmCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	fdArg := args[0]
+	fdArg := ctx.Args.String("fd")
 	if fdArg == "" {
 		con.PrintErrorf("Missing parameter: File Descriptor\n")
 		return
 	}
 
 	fdInt, err := strconv.ParseInt(fdArg, 0, 64)
-	if err != nil {
-		con.PrintErrorf("Failed to parse fdArg: %s\n", err)
-		return
-	}
+
 	memfilesList, err := con.Rpc.MemfilesRm(context.Background(), &sliverpb.MemfilesRmReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 		Fd:      fdInt,
 	})
 	if err != nil {
@@ -69,8 +67,8 @@ func MemfilesRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 	}
 }
 
-// PrintRmMemfile - Remove a memfile.
-func PrintRmMemfile(memfilesList *sliverpb.MemfilesRm, con *console.SliverClient) {
+// PrintRmMemfile - Remove a memfile
+func PrintRmMemfile(memfilesList *sliverpb.MemfilesRm, con *console.SliverConsoleClient) {
 	if memfilesList.Response != nil && memfilesList.Response.Err != "" {
 		con.PrintErrorf("%s\n", memfilesList.Response.Err)
 		return

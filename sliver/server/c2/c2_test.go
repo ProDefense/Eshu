@@ -21,8 +21,10 @@ package c2
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	insecureRand "math/rand"
 	"os"
 	"testing"
+	"time"
 
 	implantCrypto "github.com/bishopfox/sliver/implant/sliver/cryptography"
 	"github.com/bishopfox/sliver/server/certs"
@@ -32,47 +34,57 @@ import (
 )
 
 var (
-	serverAgeKeyPair *cryptography.AgeKeyPair
+	serverECCKeyPair  *cryptography.AgeKeyPair
+	implantECCKeyPair *cryptography.AgeKeyPair
 )
 
 func TestMain(m *testing.M) {
+
+	// Run one with deterministic randomness if a
+	// crash occurs, we can more easily reproduce it
+	insecureRand.Seed(1)
 	implantConfig := setup()
 	code1 := m.Run()
 	cleanup(implantConfig)
-	os.Exit(code1)
+
+	insecureRand.Seed(time.Now().UnixMicro())
+	implantConfig = setup()
+	code2 := m.Run()
+	cleanup(implantConfig)
+
+	os.Exit(code1 | code2)
 }
 
 func setup() *models.ImplantConfig {
 	var err error
 	certs.SetupCAs()
-	serverAgeKeyPair = cryptography.AgeServerKeyPair()
-	peerAgeKeyPair, _ := cryptography.RandomAgeKeyPair()
-	implantCrypto.SetSecrets(
-		peerAgeKeyPair.Public,
-		peerAgeKeyPair.Private,
-		"",
-		serverAgeKeyPair.Public,
-		cryptography.MinisignServerPublicKey(),
-	)
-
-	digest := sha256.New()
-	digest.Write([]byte(peerAgeKeyPair.Public))
-	publicKeyDigest := hex.EncodeToString(digest.Sum(nil))
-
-	implantBuild := &models.ImplantBuild{
-		PeerPublicKey:       peerAgeKeyPair.Public,
-		PeerPublicKeyDigest: publicKeyDigest,
-		PeerPrivateKey:      peerAgeKeyPair.Private,
-
-		AgeServerPublicKey: serverAgeKeyPair.Public,
-	}
-	err = db.Session().Create(implantBuild).Error
+	serverECCKeyPair = cryptography.ECCServerKeyPair()
+	implantECCKeyPair, err = cryptography.RandomAgeKeyPair()
 	if err != nil {
 		panic(err)
 	}
-
+	totpSecret, err := cryptography.TOTPServerSecret()
+	if err != nil {
+		panic(err)
+	}
+	implantCrypto.SetSecrets(
+		implantECCKeyPair.Public,
+		implantECCKeyPair.Private,
+		"",
+		serverECCKeyPair.Public,
+		totpSecret,
+		"",
+	)
+	digest := sha256.Sum256([]byte(implantECCKeyPair.Public))
 	implantConfig := &models.ImplantConfig{
-		ImplantBuilds: []models.ImplantBuild{*implantBuild},
+		ECCPublicKey:       implantECCKeyPair.Public,
+		ECCPrivateKey:      implantECCKeyPair.Private,
+		ECCPublicKeyDigest: hex.EncodeToString(digest[:]),
+		ECCServerPublicKey: serverECCKeyPair.Public,
+	}
+	err = db.Session().Create(implantConfig).Error
+	if err != nil {
+		panic(err)
 	}
 	return implantConfig
 }

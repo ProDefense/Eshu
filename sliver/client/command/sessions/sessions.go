@@ -30,17 +30,18 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
-// SessionsCmd - Display/interact with sessions.
-func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	interact, _ := cmd.Flags().GetString("interact")
-	killFlag, _ := cmd.Flags().GetString("kill")
-	killAll, _ := cmd.Flags().GetBool("kill-all")
-	clean, _ := cmd.Flags().GetBool("clean")
+// SessionsCmd - Display/interact with sessions
+func SessionsCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+
+	interact := ctx.Flags.String("interact")
+	killFlag := ctx.Flags.String("kill")
+	killAll := ctx.Flags.Bool("kill-all")
+	clean := ctx.Flags.Bool("clean")
 
 	sessions, err := con.Rpc.GetSessions(context.Background(), &commonpb.Empty{})
 	if err != nil {
@@ -51,7 +52,7 @@ func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	if killAll {
 		con.ActiveTarget.Background()
 		for _, session := range sessions.Sessions {
-			err := kill.KillSession(session, cmd, con)
+			err := kill.KillSession(session, ctx, con)
 			if err != nil {
 				con.PrintErrorf("%s\n", err)
 			}
@@ -65,12 +66,12 @@ func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		con.ActiveTarget.Background()
 		for _, session := range sessions.Sessions {
 			if session.IsDead {
-				err := kill.KillSession(session, cmd, con)
+				err := kill.KillSession(session, ctx, con)
 				if err != nil {
-					con.PrintErrorf("%s", err)
+					con.PrintErrorf("%s\n", err)
 				}
 				con.Println()
-				con.PrintInfof("Killed %s (%s)", session.Name, session.ID)
+				con.PrintInfof("Killed %s (%s)\n", session.Name, session.ID)
 			}
 		}
 		return
@@ -85,9 +86,9 @@ func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		if activeSession != nil && session.ID == activeSession.ID {
 			con.ActiveTarget.Background()
 		}
-		err := kill.KillSession(session, cmd, con)
+		err := kill.KillSession(session, ctx, con)
 		if err != nil {
-			con.PrintErrorf("%s", err)
+			con.PrintErrorf("%s\n", err)
 		}
 		return
 	}
@@ -101,12 +102,11 @@ func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 			con.PrintErrorf("Invalid session name or session number: %s\n", interact)
 		}
 	} else {
-		filter, _ := cmd.Flags().GetString("filter")
+		filter := ctx.Flags.String("filter")
 		var filterRegex *regexp.Regexp
-		if filter != "" {
+		if ctx.Flags.String("filter-re") != "" {
 			var err error
-
-			filterRegex, err = regexp.Compile(filter)
+			filterRegex, err = regexp.Compile(ctx.Flags.String("filter-re"))
 			if err != nil {
 				con.PrintErrorf("%s\n", err)
 				return
@@ -125,8 +125,8 @@ func SessionsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-// PrintSessions - Print the current sessions.
-func PrintSessions(sessions map[string]*clientpb.Session, filter string, filterRegex *regexp.Regexp, con *console.SliverClient) {
+// PrintSessions - Print the current sessions
+func PrintSessions(sessions map[string]*clientpb.Session, filter string, filterRegex *regexp.Regexp, con *console.SliverConsoleClient) {
 	width, _, err := term.GetSize(0)
 	if err != nil {
 		width = 999
@@ -136,45 +136,19 @@ func PrintSessions(sessions map[string]*clientpb.Session, filter string, filterR
 	tw.SetStyle(settings.GetTableStyle(con))
 	wideTermWidth := con.Settings.SmallTermWidth < width
 
-	windowsSessionInList := false
-	for _, session := range sessions {
-		if session.OS == "windows" {
-			windowsSessionInList = true
-		}
-	}
-
 	if wideTermWidth {
-		if windowsSessionInList {
-			tw.AppendHeader(table.Row{
-				"ID",
-				"Name",
-				"Transport",
-				"Remote Address",
-				"Hostname",
-				"Username",
-				"Process (PID)",
-				"Integrity",
-				"Operating System",
-				"Locale",
-				"Last Message",
-				"Health",
-			})
-		} else {
-			tw.AppendHeader(table.Row{
-				"ID",
-				"Name",
-				"Transport",
-				"Remote Address",
-				"Hostname",
-				"Username",
-				"Process (PID)",
-				"Operating System",
-				"Locale",
-				"Last Message",
-				"Health",
-			})
-		}
-
+		tw.AppendHeader(table.Row{
+			"ID",
+			"Name",
+			"Transport",
+			"Remote Address",
+			"Hostname",
+			"Username",
+			"Operating System",
+			"Locale",
+			"Last Message",
+			"Health",
+		})
 	} else {
 		tw.AppendHeader(table.Row{
 			"ID",
@@ -217,19 +191,11 @@ func PrintSessions(sessions map[string]*clientpb.Session, filter string, filterR
 				fmt.Sprintf(color+"%s"+console.Normal, session.RemoteAddress),
 				fmt.Sprintf(color+"%s"+console.Normal, session.Hostname),
 				fmt.Sprintf(color+"%s"+console.Normal, username),
-				fmt.Sprintf(color+"%s (%d)"+console.Normal, session.Filename, session.PID),
-			}
-
-			if windowsSessionInList {
-				rowEntries = append(rowEntries, fmt.Sprintf(color+"%s"+console.Normal, session.Integrity))
-			}
-
-			rowEntries = append(rowEntries, []string{
 				fmt.Sprintf(color+"%s/%s"+console.Normal, session.OS, session.Arch),
 				fmt.Sprintf(color+"%s"+console.Normal, session.Locale),
 				con.FormatDateDelta(time.Unix(session.LastCheckin, 0), wideTermWidth, false),
 				burned + SessionHealth,
-			}...)
+			}
 		} else {
 			rowEntries = []string{
 				fmt.Sprintf(color+"%s"+console.Normal, ShortSessionID(session.ID)),
@@ -270,7 +236,7 @@ func PrintSessions(sessions map[string]*clientpb.Session, filter string, filterR
 	con.Printf("%s\n", tw.Render())
 }
 
-// ShortSessionID - Shorten the session ID.
+// ShortSessionID - Shorten the session ID
 func ShortSessionID(id string) string {
 	return strings.Split(id, "-")[0]
 }

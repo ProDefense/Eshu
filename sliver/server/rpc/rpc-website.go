@@ -29,6 +29,7 @@ import (
 
 	"github.com/bishopfox/sliver/server/core"
 	"github.com/bishopfox/sliver/server/db"
+	"github.com/bishopfox/sliver/server/db/models"
 	"github.com/bishopfox/sliver/server/log"
 	"github.com/bishopfox/sliver/server/website"
 )
@@ -70,12 +71,11 @@ func (rpc *Server) WebsiteRemove(ctx context.Context, req *clientpb.Website) (*c
 		}
 	}
 
-	dbWebsite, err := website.WebsiteByName(req.Name)
+	dbWebsite, err := db.WebsiteByName(req.Name)
 	if err != nil {
 		return nil, err
 	}
-
-	err = db.RemoveWebSite(dbWebsite.ID)
+	err = db.Session().Delete(dbWebsite).Error
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +105,10 @@ func (rpc *Server) WebsiteAddContent(ctx context.Context, req *clientpb.WebsiteA
 					content.ContentType = "text/html; charset=utf-8" // Default mime
 				}
 			}
-
-			content.Size = uint64(len(content.Content))
 			rpcLog.Infof("Add website content (%s) %s -> %s", req.Name, content.Path, content.ContentType)
-			err := website.AddContent(req.Name, content)
+			err := website.AddContent(req.Name, content.Path, content.ContentType, content.Content)
 			if err != nil {
-				rpcWebsiteLog.Errorf("Failed to add content %s", err)
+				rpcWebsiteLog.Errorf("Failed to remove content %s", err)
 				return nil, err
 			}
 		}
@@ -126,17 +124,26 @@ func (rpc *Server) WebsiteAddContent(ctx context.Context, req *clientpb.WebsiteA
 		Data:      []byte(req.Name),
 	})
 
-	return website.MapContent(req.Name, true)
+	return website.MapContent(req.Name, false)
 }
 
 // WebsiteUpdateContent - Update specific content from a website, currently you can only the update Content-type field
 func (rpc *Server) WebsiteUpdateContent(ctx context.Context, req *clientpb.WebsiteAddContent) (*clientpb.Website, error) {
-	dbWebsite, err := website.WebsiteByName(req.Name)
+	dbWebsite, err := db.WebsiteByName(req.Name)
 	if err != nil {
 		return nil, err
 	}
 	for _, content := range req.Contents {
-		website.AddContent(dbWebsite.Name, content)
+		dbContent := models.WebContent{}
+		err := db.Session().Where(&models.WebContent{
+			WebsiteID: dbWebsite.ID,
+			Path:      content.Path,
+		}).Find(&dbContent).Error
+		if err != nil {
+			return nil, err
+		}
+		dbContent.ContentType = content.ContentType
+		db.Session().Save(dbContent)
 	}
 
 	core.EventBroker.Publish(core.Event{

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"reflect"
+	"unsafe"
 
 	"github.com/gobwas/httphead"
 )
@@ -39,6 +41,19 @@ func SelectEqual(v string) func(string) bool {
 	}
 }
 
+func strToBytes(str string) (bts []byte) {
+	s := (*reflect.StringHeader)(unsafe.Pointer(&str))
+	b := (*reflect.SliceHeader)(unsafe.Pointer(&bts))
+	b.Data = s.Data
+	b.Len = s.Len
+	b.Cap = s.Len
+	return
+}
+
+func btsToString(bts []byte) (str string) {
+	return *(*string)(unsafe.Pointer(&bts))
+}
+
 // asciiToInt converts bytes to int.
 func asciiToInt(bts []byte) (ret int, err error) {
 	// ASCII numbers all start with the high-order bits 0011.
@@ -58,7 +73,7 @@ func asciiToInt(bts []byte) (ret int, err error) {
 }
 
 // pow for integers implementation.
-// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3.
+// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3
 func pow(a, b int) int {
 	p := 1
 	for b > 0 {
@@ -101,7 +116,7 @@ func btsHasToken(header, token []byte) (has bool) {
 		has = bytes.EqualFold(v, token)
 		return !has
 	})
-	return has
+	return
 }
 
 const (

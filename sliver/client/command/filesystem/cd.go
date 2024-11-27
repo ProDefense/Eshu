@@ -24,24 +24,21 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// CdCmd - Change directory on the remote system.
-func CdCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// CdCmd - Change directory on the remote system
+func CdCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
-
-	filePath := "."
-	if len(args) == 1 {
-		filePath = args[0]
-	}
+	filePath := ctx.Args.String("path")
 
 	pwd, err := con.Rpc.Cd(context.Background(), &sliverpb.CdReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 		Path:    filePath,
 	})
 	if err != nil {

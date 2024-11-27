@@ -19,17 +19,12 @@ package rpc
 */
 
 import (
-	"bytes"
-	"compress/zlib"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"time"
 
 	consts "github.com/bishopfox/sliver/client/constants"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
@@ -38,84 +33,56 @@ import (
 	"github.com/bishopfox/sliver/server/assets"
 	"github.com/bishopfox/sliver/server/codenames"
 	"github.com/bishopfox/sliver/server/core"
+	"github.com/bishopfox/sliver/server/cryptography"
 	"github.com/bishopfox/sliver/server/db"
-	"github.com/bishopfox/sliver/server/db/models"
-	"github.com/bishopfox/sliver/server/encoders"
 	"github.com/bishopfox/sliver/server/generate"
 	"github.com/bishopfox/sliver/server/log"
 	"github.com/bishopfox/sliver/util"
-	utilEncoders "github.com/bishopfox/sliver/util/encoders"
-	"github.com/bishopfox/sliver/util/encoders/traffic"
+	"github.com/gofrs/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 var (
-	rcpGenLog = log.NamedLogger("rpc", "generate")
+	rcpLog = log.NamedLogger("rpc", "generate")
 )
 
 // Generate - Generate a new implant
 func (rpc *Server) Generate(ctx context.Context, req *clientpb.GenerateReq) (*clientpb.Generate, error) {
-	var (
-		err    error
-		config *clientpb.ImplantConfig
-		name   string
-	)
-
-	if req.Name == "" {
+	var fPath string
+	var err error
+	name, config := generate.ImplantConfigFromProtobuf(req.Config)
+	if name == "" {
 		name, err = codenames.GetCodename()
 		if err != nil {
 			return nil, err
 		}
-	} else if err := util.AllowedName(name); err != nil {
-		return nil, err
-	} else {
-		name = req.Name
+	}
+	if config.TemplateName == "" {
+		config.TemplateName = generate.SliverTemplateName
 	}
 
-	if req.Config.ID != "" {
-		// if this is a profile reuse existing configuration
-		config, err = db.ImplantConfigByID(req.Config.ID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// configure c2 channels to enable
-		config = req.Config
-		config.IncludeMTLS = models.IsC2Enabled([]string{"mtls"}, config.C2)
-		config.IncludeWG = models.IsC2Enabled([]string{"wg"}, config.C2)
-		config.IncludeHTTP = models.IsC2Enabled([]string{"http", "https"}, config.C2)
-		config.IncludeDNS = models.IsC2Enabled([]string{"dns"}, config.C2)
-		config.IncludeNamePipe = models.IsC2Enabled([]string{"namedpipe"}, config.C2)
-		config.IncludeTCP = models.IsC2Enabled([]string{"tcppivot"}, config.C2)
-	}
-
-	// generate config
-	build, err := generate.GenerateConfig(name, config)
+	otpSecret, _ := cryptography.TOTPServerSecret()
+	err = generate.GenerateConfig(name, config, true)
 	if err != nil {
 		return nil, err
 	}
-
-	// retrieve http c2 implant config
-	httpC2Config, err := db.LoadHTTPC2ConfigByName(req.Config.HTTPC2ConfigName)
-	if err != nil {
-		return nil, err
+	if config == nil {
+		return nil, errors.New("invalid implant config")
 	}
-
-	var fPath string
 	switch req.Config.Format {
 	case clientpb.OutputFormat_SERVICE:
 		fallthrough
 	case clientpb.OutputFormat_EXECUTABLE:
-		fPath, err = generate.SliverExecutable(name, build, config, httpC2Config.ImplantConfig)
+		fPath, err = generate.SliverExecutable(name, otpSecret, config, true)
 	case clientpb.OutputFormat_SHARED_LIB:
-		fPath, err = generate.SliverSharedLibrary(name, build, config, httpC2Config.ImplantConfig)
+		fPath, err = generate.SliverSharedLibrary(name, otpSecret, config, true)
 	case clientpb.OutputFormat_SHELLCODE:
-		fPath, err = generate.SliverShellcode(name, build, config, httpC2Config.ImplantConfig)
+		fPath, err = generate.SliverShellcode(name, otpSecret, config, true)
 	default:
 		return nil, fmt.Errorf("invalid output format: %s", req.Config.Format)
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -123,12 +90,6 @@ func (rpc *Server) Generate(ctx context.Context, req *clientpb.GenerateReq) (*cl
 	fileName := filepath.Base(fPath)
 	fileData, err := os.ReadFile(fPath)
 	if err != nil {
-		return nil, err
-	}
-
-	err = generate.ImplantBuildSave(build, config, fPath)
-	if err != nil {
-		rpcLog.Errorf("Failed to save external build: %s", err)
 		return nil, err
 	}
 
@@ -161,7 +122,7 @@ func (rpc *Server) Regenerate(ctx context.Context, req *clientpb.RegenerateReq) 
 
 	return &clientpb.Generate{
 		File: &commonpb.File{
-			Name: build.Name,
+			Name: build.ImplantConfig.FileName,
 			Data: fileData,
 		},
 	}, nil
@@ -169,27 +130,17 @@ func (rpc *Server) Regenerate(ctx context.Context, req *clientpb.RegenerateReq) 
 
 // ImplantBuilds - List existing implant builds
 func (rpc *Server) ImplantBuilds(ctx context.Context, _ *commonpb.Empty) (*clientpb.ImplantBuilds, error) {
-	builds, err := db.ImplantBuilds()
+	dbBuilds, err := db.ImplantBuilds()
 	if err != nil {
 		return nil, err
 	}
-	return builds, nil
-}
-
-// StageImplantBuild - Serve a previously generated build
-func (rpc *Server) StageImplantBuild(ctx context.Context, req *clientpb.ImplantStageReq) (*commonpb.Empty, error) {
-	err := db.Session().Model(&models.ImplantBuild{}).Where("Stage = ?", true).Update("Stage", false).Error
-	if err != nil {
-		return nil, err
+	pbBuilds := &clientpb.ImplantBuilds{
+		Configs: map[string]*clientpb.ImplantConfig{},
 	}
-	for _, name := range req.Build {
-		err = db.Session().Model(&models.ImplantBuild{}).Where(&models.ImplantBuild{Name: name}).Update("Stage", true).Error
-		if err != nil {
-			return nil, err
-		}
+	for _, dbBuild := range dbBuilds {
+		pbBuilds.Configs[dbBuild.Name] = dbBuild.ImplantConfig.ToProtobuf()
 	}
-
-	return &commonpb.Empty{}, nil
+	return pbBuilds, nil
 }
 
 // Canaries - List existing canaries
@@ -202,7 +153,7 @@ func (rpc *Server) Canaries(ctx context.Context, _ *commonpb.Empty) (*clientpb.C
 	rpcLog.Infof("Found %d canaries", len(dbCanaries))
 	canaries := []*clientpb.DNSCanary{}
 	for _, canary := range dbCanaries {
-		canaries = append(canaries, canary)
+		canaries = append(canaries, canary.ToProtobuf())
 	}
 
 	return &clientpb.Canaries{
@@ -226,20 +177,29 @@ func (rpc *Server) GenerateUniqueIP(ctx context.Context, _ *commonpb.Empty) (*cl
 
 // ImplantProfiles - List profiles
 func (rpc *Server) ImplantProfiles(ctx context.Context, _ *commonpb.Empty) (*clientpb.ImplantProfiles, error) {
-	implantProfiles, err := db.ImplantProfiles()
-	if err != nil {
-		return nil, err
+	implantProfiles := &clientpb.ImplantProfiles{
+		Profiles: []*clientpb.ImplantProfile{},
 	}
-
-	return &clientpb.ImplantProfiles{Profiles: implantProfiles}, nil
+	dbProfiles, err := db.ImplantProfiles()
+	if err != nil {
+		return implantProfiles, err
+	}
+	for _, dbProfile := range dbProfiles {
+		implantProfiles.Profiles = append(implantProfiles.Profiles, &clientpb.ImplantProfile{
+			Name:   dbProfile.Name,
+			Config: dbProfile.ImplantConfig.ToProtobuf(),
+		})
+	}
+	return implantProfiles, nil
 }
 
 // SaveImplantProfile - Save a new profile
 func (rpc *Server) SaveImplantProfile(ctx context.Context, profile *clientpb.ImplantProfile) (*clientpb.ImplantProfile, error) {
+	_, config := generate.ImplantConfigFromProtobuf(profile.Config)
 	profile.Name = filepath.Base(profile.Name)
 	if 0 < len(profile.Name) && profile.Name != "." {
 		rpcLog.Infof("Saving new profile with name %#v", profile.Name)
-		profile, err := generate.SaveImplantProfile(profile)
+		err := generate.SaveImplantProfile(profile.Name, config)
 		if err != nil {
 			return nil, err
 		}
@@ -258,45 +218,26 @@ func (rpc *Server) DeleteImplantProfile(ctx context.Context, req *clientpb.Delet
 	if err != nil {
 		return nil, err
 	}
-	for _, build := range profile.Config.ImplantBuilds {
-		err = RemoveBuildByName(build.Name)
-		if err != nil {
-			return nil, err
-		}
+	err = db.Session().Delete(profile).Error
+	if err == nil {
+		core.EventBroker.Publish(core.Event{
+			EventType: consts.ProfileEvent,
+			Data:      []byte(profile.Name),
+		})
 	}
-	err = db.DeleteProfile(req.Name)
 	return &commonpb.Empty{}, err
 }
 
 // DeleteImplantBuild - Delete an implant build
 func (rpc *Server) DeleteImplantBuild(ctx context.Context, req *clientpb.DeleteReq) (*commonpb.Empty, error) {
-	err := RemoveBuildByName(req.Name)
-	return &commonpb.Empty{}, err
-}
-
-// Remove Implant build given the build name
-func RemoveBuildByName(name string) error {
-	resourceID, err := db.ResourceIDByName(name)
+	build, err := db.ImplantBuildByName(req.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	build, err := db.ImplantBuildByName(name)
-	if err != nil {
-		return err
-	}
-
 	err = db.Session().Delete(build).Error
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	encoders.UnavailableID = util.RemoveElement(encoders.UnavailableID, resourceID.Value)
-	err = db.Session().Where(&models.ResourceID{Name: name}).Delete(&models.ResourceID{}).Error
-	if err != nil {
-		return err
-	}
-
 	err = generate.ImplantFileDelete(build)
 	if err == nil {
 		core.EventBroker.Publish(core.Event{
@@ -304,7 +245,7 @@ func RemoveBuildByName(name string) error {
 			Data:      []byte(build.Name),
 		})
 	}
-	return nil
+	return &commonpb.Empty{}, err
 }
 
 // ShellcodeRDI - Generates a RDI shellcode from a given DLL
@@ -322,7 +263,7 @@ func (rpc *Server) GetCompiler(ctx context.Context, _ *commonpb.Empty) (*clientp
 		UnsupportedTargets: generate.GetUnsupportedTargets(),
 		CrossCompilers:     generate.GetCrossCompilers(),
 	}
-	rcpGenLog.Debugf("GetCompiler = %v", compiler)
+	rcpLog.Debugf("GetCompiler = %v", compiler)
 	return compiler, nil
 }
 
@@ -330,20 +271,13 @@ func (rpc *Server) GetCompiler(ctx context.Context, _ *commonpb.Empty) (*clientp
 
 // Generate - Generate a new implant
 func (rpc *Server) GenerateExternal(ctx context.Context, req *clientpb.ExternalGenerateReq) (*clientpb.ExternalImplantConfig, error) {
-	var (
-		err  error
-		name string
-	)
-	config := req.Config
-	if req.Name == "" {
+	var err error
+	name, config := generate.ImplantConfigFromProtobuf(req.Config)
+	if name == "" {
 		name, err = codenames.GetCodename()
 		if err != nil {
 			return nil, err
 		}
-	} else if err := util.AllowedName(name); err != nil {
-		return nil, err
-	} else {
-		name = req.Name
 	}
 	if config == nil {
 		return nil, errors.New("invalid implant config")
@@ -355,22 +289,29 @@ func (rpc *Server) GenerateExternal(ctx context.Context, req *clientpb.ExternalG
 
 	core.EventBroker.Publish(core.Event{
 		EventType: consts.ExternalBuildEvent,
-		Data:      []byte(fmt.Sprintf("%s:%s", req.BuilderName, externalConfig.Build.ID)),
+		Data:      []byte(fmt.Sprintf("%s:%s", req.BuilderName, config.ID.String())),
 	})
 
 	return externalConfig, err
 }
 
-// GenerateExternalSaveBuild - Allows an external builder to save the build to the server
 func (rpc *Server) GenerateExternalSaveBuild(ctx context.Context, req *clientpb.ExternalImplantBinary) (*commonpb.Empty, error) {
-	implantBuild, err := db.ImplantBuildByID(req.ImplantBuildID)
+	implantConfig, err := db.ImplantConfigWithC2sByID(req.ImplantConfigID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid implant build id")
+		return nil, status.Error(codes.InvalidArgument, "invalid implant config id")
 	}
-
-	implantConfig, err := db.ImplantConfigWithC2sByID(implantBuild.ImplantConfigID)
+	if implantConfig.TemplateName == "" {
+		return nil, status.Error(codes.InvalidArgument, "invalid payload name")
+	}
+	err = util.AllowedName(req.Name)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "invalid implant config id")
+		rpcLog.Errorf("Invalid build name: %s", err)
+		return nil, ErrInvalidName
+	}
+	_, err = db.ImplantBuildByName(req.Name)
+	if err == nil {
+		rpcLog.Errorf("Build '%s' already exists!", req.Name)
+		return nil, ErrBuildExists
 	}
 
 	tmpFile, err := os.CreateTemp(assets.GetRootAppDir(), "tmp-external-build-*")
@@ -381,11 +322,14 @@ func (rpc *Server) GenerateExternalSaveBuild(ctx context.Context, req *clientpb.
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write(req.File.Data)
 	if err != nil {
-		rcpGenLog.Errorf("Failed to write implant binary to temp file: %s", err)
+		rcpLog.Errorf("Failed to write implant binary to temp file: %s", err)
 		return nil, status.Error(codes.Internal, "Failed to write implant binary to temp file")
 	}
 	rpcLog.Infof("Saving external build '%s' from %s", req.Name, tmpFile.Name())
-	err = generate.ImplantBuildSave(implantBuild, implantConfig, tmpFile.Name())
+
+	implantConfig.FileName = req.File.Name
+	generate.ImplantConfigSave(implantConfig)
+	err = generate.ImplantBuildSave(req.Name, implantConfig, tmpFile.Name())
 	if err != nil {
 		rpcLog.Errorf("Failed to save external build: %s", err)
 		return nil, err
@@ -393,58 +337,42 @@ func (rpc *Server) GenerateExternalSaveBuild(ctx context.Context, req *clientpb.
 
 	core.EventBroker.Publish(core.Event{
 		EventType: consts.BuildCompletedEvent,
-		Data:      []byte(implantBuild.Name),
+		Data:      []byte(req.Name),
 	})
 
 	return &commonpb.Empty{}, nil
 }
 
-// GenerateExternalGetImplantConfig - Get an implant config for external builder
-func (rpc *Server) GenerateExternalGetBuildConfig(ctx context.Context, req *clientpb.ImplantBuild) (*clientpb.ExternalImplantConfig, error) {
-	build, err := db.ImplantBuildByID(req.ID)
+func (rpc *Server) GenerateExternalGetImplantConfig(ctx context.Context, req *clientpb.ImplantConfig) (*clientpb.ExternalImplantConfig, error) {
+	implantConfig, err := db.ImplantConfigWithC2sByID(req.ID)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid implant build id")
+		return nil, status.Error(codes.InvalidArgument, "invalid implant config id")
+	}
+	if implantConfig.ImplantBuildID != uuid.Nil {
+		return nil, status.Error(codes.InvalidArgument, "implant config already has a build")
 	}
 
-	implantConfig, err := db.ImplantConfigWithC2sByID(build.ImplantConfigID)
+	otpSecret, err := cryptography.TOTPServerSecret()
 	if err != nil {
-		return nil, status.Error(codes.Internal, "invalid implant config id")
-	}
-
-	// retrieve http c2 implant config
-	httpC2Config, err := db.LoadHTTPC2ConfigByName(implantConfig.HTTPC2ConfigName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to load HTTP C2 Configuration: %s", err))
-	}
-
-	encoders := map[string]uint64{
-		"base64":  encoders.Base64EncoderID,
-		"base58":  encoders.Base58EncoderID,
-		"base32":  encoders.Base32EncoderID,
-		"hex":     encoders.HexEncoderID,
-		"english": encoders.EnglishEncoderID,
-		"gzip":    encoders.GzipEncoderID,
-		"png":     encoders.PNGEncoderID,
+		return nil, err
 	}
 
 	return &clientpb.ExternalImplantConfig{
-		Config:   implantConfig,
-		Build:    build,
-		HTTPC2:   httpC2Config,
-		Encoders: encoders,
+		Config:    implantConfig.ToProtobuf(),
+		OTPSecret: otpSecret,
 	}, nil
 }
 
-// BuilderRegister - Register a new builder with the server
+// BuilderRegister
 func (rpc *Server) BuilderRegister(req *clientpb.Builder, stream rpcpb.SliverRPC_BuilderRegisterServer) error {
 	req.OperatorName = rpc.getClientCommonName(stream.Context())
 	if req.Name == "" {
-		rcpGenLog.Warnf("Failed to register builder, missing builder name")
+		rcpLog.Warnf("Failed to register builder, missing builder name")
 		return status.Error(codes.InvalidArgument, "missing builder name")
 	}
 	err := core.AddBuilder(req)
 	if err != nil {
-		rcpGenLog.Warnf("Failed to register builder: %s", err)
+		rcpLog.Warnf("Failed to register builder: %s", err)
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -496,12 +424,10 @@ func (rpc *Server) BuilderRegister(req *clientpb.Builder, stream rpcpb.SliverRPC
 	}
 }
 
-// Builders - Get a list of all builders
 func (rpc *Server) Builders(ctx context.Context, _ *commonpb.Empty) (*clientpb.Builders, error) {
 	return &clientpb.Builders{Builders: core.AllBuilders()}, nil
 }
 
-// BuilderTrigger - Trigger a builder event
 func (rpc *Server) BuilderTrigger(ctx context.Context, req *clientpb.Event) (*commonpb.Empty, error) {
 
 	switch req.EventType {
@@ -520,326 +446,4 @@ func (rpc *Server) BuilderTrigger(ctx context.Context, req *clientpb.Event) (*co
 	}
 
 	return &commonpb.Empty{}, nil
-}
-
-// TrafficEncoderMap - Get a map of the server's traffic encoders
-func (rpc *Server) TrafficEncoderMap(ctx context.Context, _ *commonpb.Empty) (*clientpb.TrafficEncoderMap, error) {
-	trafficEncoderMap := make(map[string]*clientpb.TrafficEncoder)
-	for id, encoder := range encoders.TrafficEncoderMap {
-		trafficEncoderMap[encoder.FileName] = &clientpb.TrafficEncoder{
-			ID: id,
-			Wasm: &commonpb.File{
-				Name: encoder.FileName,
-				Data: encoder.Data,
-			},
-		}
-	}
-	return &clientpb.TrafficEncoderMap{Encoders: trafficEncoderMap}, nil
-}
-
-// TrafficEncoderAdd - Add a new traffic encoder, and test for correctness
-func (rpc *Server) TrafficEncoderAdd(ctx context.Context, req *clientpb.TrafficEncoder) (*clientpb.TrafficEncoderTests, error) {
-	req.ID = traffic.CalculateWasmEncoderID(req.Wasm.Data)
-	req.Wasm.Name = filepath.Base(req.Wasm.Name)
-	rpcLog.Infof("Adding new traffic encoder: %s (%d)", req.Wasm.Name, req.ID)
-	progress := make(chan []byte, 1)
-	go testProgress(progress)
-	tests, err := testTrafficEncoder(ctx, req, progress)
-	close(progress)
-	if err != nil {
-		return nil, err
-	}
-	return tests, nil
-}
-
-func testProgress(progress chan []byte) {
-	for data := range progress {
-		core.EventBroker.Publish(core.Event{
-			EventType: consts.TrafficEncoderTestProgressEvent,
-			Data:      data,
-		})
-	}
-}
-
-// testTrafficEncoder - Test a traffic encoder for correctness by encoding/decoding random samples
-func testTrafficEncoder(ctx context.Context, req *clientpb.TrafficEncoder, progress chan []byte) (*clientpb.TrafficEncoderTests, error) {
-	if req.Wasm == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing wasm file")
-	}
-	if req.Wasm.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing wasm name")
-	}
-	if !strings.HasSuffix(req.Wasm.Name, ".wasm") {
-		return nil, status.Error(codes.InvalidArgument, "invalid wasm file name, must have a .wasm extension")
-	}
-	if req.Wasm.Data == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing wasm data")
-	}
-	rpcLog.Infof("Testing traffic encoder %s (%d) - %d bytes", req.Wasm.Name, req.ID, len(req.Wasm.Data))
-	encoder, err := traffic.CreateTrafficEncoder(strings.TrimSuffix(req.Wasm.Name, ".wasm"), req.Wasm.Data, func(s string) {
-		rpcLog.Infof("[traffic encoder test] %s", s)
-	})
-	if err != nil {
-		rpcLog.Errorf("Failed to create traffic encoder: %s", err.Error())
-		return nil, err
-	}
-
-	// Test Suite for Traffic Encoders
-	testSuite := []string{
-		traffic.SmallRandom,
-		traffic.SmallRandom,
-		traffic.SmallRandom,
-		traffic.MediumRandom,
-		traffic.MediumRandom,
-		traffic.MediumRandom,
-		traffic.LargeRandom,
-		traffic.LargeRandom,
-		traffic.LargeRandom,
-		traffic.VeryLargeRandom,
-	}
-
-	tests := []*clientpb.TrafficEncoderTest{}
-	if !req.SkipTests {
-		for index, testName := range testSuite {
-			rpcLog.Infof("Running test '%s' ...", testName)
-			tester := traffic.TrafficEncoderTesters[testName]
-			if tester == nil {
-				panic("invalid traffic encoder test")
-			}
-			test := tester(encoder)
-			tests = append(tests, test)
-			testData, _ := proto.Marshal(&clientpb.TrafficEncoderTests{
-				Encoder:    req,
-				TotalTests: int32(len(testSuite)),
-				Tests:      tests,
-			})
-			progress <- testData
-			if int64(time.Duration(30*time.Second)) < test.Duration {
-				rpcLog.Warnf("Test '%s' took longer than 30 seconds to complete, skip remaining tests", testName)
-				remainingTests := testSuite[index:]
-				for _, skipTest := range remainingTests {
-					tests = append(tests, &clientpb.TrafficEncoderTest{
-						Name:    skipTest,
-						Success: false,
-						Err:     "test skipped, encoder too slow",
-					})
-				}
-				break
-			}
-		}
-	}
-
-	if allTestsPassed(tests) || req.SkipTests {
-		err = encoders.SaveTrafficEncoder(req.Wasm.Name, req.Wasm.Data)
-		if err != nil {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
-	}
-
-	return &clientpb.TrafficEncoderTests{
-		Encoder:    req,
-		TotalTests: int32(len(testSuite)),
-		Tests:      tests,
-	}, nil
-}
-
-func allTestsPassed(tests []*clientpb.TrafficEncoderTest) bool {
-	for _, test := range tests {
-		if !test.Success {
-			return false
-		}
-	}
-	return true
-}
-
-// TrafficEncoderRm - Remove a traffic encoder
-func (rpc *Server) TrafficEncoderRm(ctx context.Context, req *clientpb.TrafficEncoder) (*commonpb.Empty, error) {
-	if req.Wasm == nil {
-		return nil, status.Error(codes.InvalidArgument, "missing wasm file")
-	}
-	if req.Wasm.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "missing wasm file name")
-	}
-	if !strings.HasSuffix(req.Wasm.Name, ".wasm") {
-		return nil, status.Error(codes.InvalidArgument, "invalid wasm file name, must have a .wasm extension")
-	}
-	err := encoders.RemoveTrafficEncoder(req.Wasm.Name)
-	if err != nil {
-		return nil, status.Error(codes.Aborted, err.Error())
-	}
-	return &commonpb.Empty{}, nil
-}
-
-// GenerateStage - Generate a new stage
-func (rpc *Server) GenerateStage(ctx context.Context, req *clientpb.GenerateStageReq) (*clientpb.Generate, error) {
-	var (
-		err  error
-		name string
-	)
-
-	profile, err := db.ImplantProfileByName(req.Profile)
-	if err != nil {
-		return nil, err
-	}
-
-	if req.Name == "" {
-		name, err = codenames.GetCodename()
-		if err != nil {
-			return nil, err
-		}
-	} else if err := util.AllowedName(name); err != nil {
-		return nil, err
-	} else {
-		name = req.Name
-	}
-
-	// retrieve http c2 implant config
-	httpC2Config, err := db.LoadHTTPC2ConfigByName(profile.Config.HTTPC2ConfigName)
-	if err != nil {
-		return nil, err
-	}
-
-	// generate config
-	build, err := generate.GenerateConfig(name, profile.Config)
-	if err != nil {
-		return nil, err
-	}
-
-	var fPath string
-	switch profile.Config.Format {
-	case clientpb.OutputFormat_SERVICE:
-		fallthrough
-	case clientpb.OutputFormat_EXECUTABLE:
-		fPath, err = generate.SliverExecutable(name, build, profile.Config, httpC2Config.ImplantConfig)
-	case clientpb.OutputFormat_SHARED_LIB:
-		fPath, err = generate.SliverSharedLibrary(name, build, profile.Config, httpC2Config.ImplantConfig)
-	case clientpb.OutputFormat_SHELLCODE:
-		fPath, err = generate.SliverShellcode(name, build, profile.Config, httpC2Config.ImplantConfig)
-	default:
-		return nil, fmt.Errorf("invalid output format: %s", profile.Config.Format)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	fileName := filepath.Base(fPath)
-	fileData, err := os.ReadFile(fPath)
-	if err != nil {
-		return nil, err
-	}
-
-	core.EventBroker.Publish(core.Event{
-		EventType: consts.BuildCompletedEvent,
-		Data:      []byte(fileName),
-	})
-
-	var (
-		stageType string
-		stage2    []byte
-	)
-
-	if req.PrependSize {
-		fileData = prependPayloadSize(fileData)
-	}
-
-	if req.Compress != "" {
-		stageType = req.Compress + " - "
-		stage2, err = Compress(fileData, req.Compress)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if req.AESEncryptKey != "" || req.RC4EncryptKey != "" {
-		if req.RC4EncryptKey != "" {
-			stageType += "RC4 - "
-		} else {
-			stageType += "AES - "
-		}
-
-		stage2, err = Encrypt(stage2, req)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	err = generate.SaveStage(build, profile.Config, stage2, stageType)
-	if err != nil {
-		rpcLog.Errorf("Failed to save external build: %s", err)
-		return nil, err
-	}
-
-	core.EventBroker.Publish(core.Event{
-		EventType: consts.BuildCompletedEvent,
-		Data:      []byte(fileName),
-	})
-
-	return &clientpb.Generate{
-		File: &commonpb.File{
-			Name: fileName,
-			Data: fileData,
-		},
-	}, err
-}
-
-func Encrypt(stage2 []byte, req *clientpb.GenerateStageReq) ([]byte, error) {
-	if req.RC4EncryptKey != "" && req.AESEncryptKey != "" {
-		return nil, errors.New("Cannot use both RC4 and AES encryption\n")
-	}
-	if req.RC4EncryptKey != "" {
-		// RC4 keysize can be between 1 to 256 bytes
-		if len(req.RC4EncryptKey) < 1 || len(req.RC4EncryptKey) > 256 {
-			return nil, errors.New("Incorrect length of RC4 Key\n")
-		}
-		stage2 = util.RC4EncryptUnsafe(stage2, []byte(req.RC4EncryptKey))
-		return stage2, nil
-	}
-
-	if req.AESEncryptKey != "" {
-		// check if aes encryption key is correct length
-		if len(req.AESEncryptKey)%16 != 0 {
-			return nil, errors.New("Incorrect length of AES Key\n")
-		}
-
-		// set default aes iv
-		if req.AESEncryptIv == "" {
-			req.AESEncryptIv = "0000000000000000"
-		} else {
-			// check if aes iv is correct length
-			if len(req.AESEncryptIv)%16 != 0 {
-				return nil, errors.New("Incorrect length of AES IV\n")
-			}
-		}
-		stage2 = util.PreludeEncrypt(stage2, []byte(req.AESEncryptKey), []byte(req.AESEncryptIv))
-		return stage2, nil
-	}
-	return stage2, nil
-}
-
-func Compress(stage2 []byte, compress string) ([]byte, error) {
-
-	switch compress {
-	case "zlib":
-		// use zlib to compress the stage2
-		var compBuff bytes.Buffer
-		zlibWriter := zlib.NewWriter(&compBuff)
-		zlibWriter.Write(stage2)
-		zlibWriter.Close()
-		stage2 = compBuff.Bytes()
-	case "gzip":
-		stage2, _ = utilEncoders.GzipBuf(stage2)
-	case "deflate9":
-		fallthrough
-	case "deflate":
-		stage2 = util.DeflateBuf(stage2)
-	}
-	return stage2, nil
-
-}
-
-func prependPayloadSize(payload []byte) []byte {
-	payloadSize := uint32(len(payload))
-	lenBuf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(lenBuf, payloadSize)
-	return append(lenBuf, payload...)
 }

@@ -20,14 +20,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
-
-	// {{if .Config.Debug}}
-	"log"
-	// {{end}}
 )
 
 type providerDarwin struct {
@@ -143,7 +140,6 @@ Returns:
 func (p *providerDarwin) readDarwinNetworkSettingProxy(protocol string, targetUrl *url.URL) Proxy {
 	proxy, err := p.parseScutildata(protocol, targetUrl, scUtilBinary, scUtilBinaryArgument)
 	if err != nil {
-		// {{if .Config.Debug}}
 		if isNotFound(err) {
 			log.Printf("[proxy.Provider.readDarwinNetworkSettingProxy]: %s proxy is not enabled.\n", protocol)
 		} else if isTimedOut(err) {
@@ -151,7 +147,6 @@ func (p *providerDarwin) readDarwinNetworkSettingProxy(protocol string, targetUr
 		} else {
 			log.Printf("[proxy.Provider.readDarwinNetworkSettingProxy]: Failed to parse Scutil data, %s\n", err)
 		}
-		// {{end}}
 	}
 	return proxy
 }
@@ -265,9 +260,7 @@ func (p *providerDarwin) parseScutildata(protocol string, targetUrl *url.URL, na
 	}
 	if proxyBypass != "" {
 		bypass := p.isProxyBypass(targetUrl, proxyBypass, ",")
-		// {{if .Config.Debug}}
 		log.Printf("[proxy.Provider.parseProxyInfo]: ProxyBypass=\"%s\", targetUrl=%s, bypass=%t", proxyBypass, targetUrl, bypass)
-		// {{end}}
 		if bypass {
 			return nil, nil
 		}

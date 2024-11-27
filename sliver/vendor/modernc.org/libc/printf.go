@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !(linux && (amd64 || arm64 || loong64))
-
 package libc // import "modernc.org/libc"
 
 import (
@@ -40,17 +38,17 @@ const (
 // the output stream; and conversion specifications, each of which results in
 // fetching zero or more subsequent arguments.
 func printf(format, args uintptr) []byte {
-	// format0 := format
-	// args0 := args
+	format0 := format
+	args0 := args
 	buf := bytes.NewBuffer(nil)
 	for {
 		switch c := *(*byte)(unsafe.Pointer(format)); c {
 		case '%':
 			format = printfConversion(buf, format, &args)
 		case 0:
-			// 			if dmesgs {
-			// 				dmesg("%v: %q, %#x -> %q", origin(1), GoString(format0), args0, buf.Bytes())
-			// 			}
+			if dmesgs {
+				dmesg("%v: %q, %#x -> %q", origin(1), GoString(format0), args0, buf.Bytes())
+			}
 			return buf.Bytes()
 		default:
 			format++
@@ -116,7 +114,7 @@ flags:
 			break flags
 		}
 	}
-	format, width, hasWidth := parseFieldWidth(format, args)
+	format, width, hasWidth := parseFieldWidth(format)
 	if hasWidth {
 		spec += strconv.Itoa(width)
 	}
@@ -143,7 +141,7 @@ more:
 			mod = modNone
 		}
 		switch mod {
-		case modL, modLL, mod64, modJ:
+		case modL, modLL, mod64:
 			arg = VaInt64(args)
 		case modH:
 			arg = int64(int16(VaInt32(args)))
@@ -151,8 +149,6 @@ more:
 			arg = int64(int8(VaInt32(args)))
 		case mod32, modNone:
 			arg = int64(VaInt32(args))
-		case modT:
-			arg = int64(VaInt64(args))
 		default:
 			panic(todo("", mod))
 		}
@@ -189,8 +185,6 @@ more:
 			arg = uint64(uint8(VaInt32(args)))
 		case mod32:
 			arg = uint64(VaInt32(args))
-		case modZ:
-			arg = uint64(VaInt64(args))
 		default:
 			panic(todo("", mod))
 		}
@@ -240,38 +234,6 @@ more:
 		}
 
 		f := spec + "o"
-		str = fmt.Sprintf(f, arg)
-	case 'b':
-		// Base 2.
-		format++
-		var arg uint64
-		if isWindows && mod == modL {
-			mod = modNone
-		}
-		switch mod {
-		case modNone:
-			arg = uint64(VaUint32(args))
-		case modL, modLL, mod64:
-			arg = VaUint64(args)
-		case modH:
-			arg = uint64(uint16(VaInt32(args)))
-		case modHH:
-			arg = uint64(uint8(VaInt32(args)))
-		case mod32:
-			arg = uint64(VaInt32(args))
-		default:
-			panic(todo("", mod))
-		}
-
-		if arg == 0 && hasPrecision && prec == 0 {
-			break
-		}
-
-		if hasPrecision {
-			panic(todo("", prec))
-		}
-
-		f := spec + "b"
 		str = fmt.Sprintf(f, arg)
 	case 'I':
 		if !isWindows {
@@ -346,8 +308,6 @@ more:
 			arg = uint64(uint8(VaInt32(args)))
 		case mod32:
 			arg = uint64(VaInt32(args))
-		case modZ:
-			arg = uint64(VaInt64(args))
 		default:
 			panic(todo("", mod))
 		}
@@ -510,7 +470,7 @@ more:
 // nonexistent or small field width cause truncation of a field; if the result
 // of a conversion is wider than the field width, the field is expanded to
 // contain the conversion result.
-func parseFieldWidth(format uintptr, args *uintptr) (_ uintptr, n int, ok bool) {
+func parseFieldWidth(format uintptr) (_ uintptr, n int, ok bool) {
 	first := true
 	for {
 		var digit int
@@ -518,13 +478,7 @@ func parseFieldWidth(format uintptr, args *uintptr) (_ uintptr, n int, ok bool) 
 		case first && c == '0':
 			return format, n, ok
 		case first && c == '*':
-			format++
-			switch c := *(*byte)(unsafe.Pointer(format)); {
-			case c >= '0' && c <= '9':
-				panic(todo(""))
-			default:
-				return format, int(VaInt32(args)), true
-			}
+			panic(todo(""))
 		case c >= '0' && c <= '9':
 			format++
 			ok = true
@@ -655,18 +609,13 @@ func parseLengthModifier(format uintptr) (_ uintptr, n int) {
 		n = modLD
 		return format, n
 	case 'j':
-		format++
-		n = modJ
-		return format, n
+		panic(todo(""))
 	case 'z':
-		format++
-		return format, modZ
+		panic(todo(""))
 	case 'Z':
-		format++
-		return format, modCapitalZ
+		panic(todo(""))
 	case 't':
-		format++
-		return format, modT
+		panic(todo(""))
 	default:
 		return format, 0
 	}

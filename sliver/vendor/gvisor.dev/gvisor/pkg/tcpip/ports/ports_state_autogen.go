@@ -3,8 +3,6 @@
 package ports
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -30,10 +28,10 @@ func (f *Flags) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(2, &f.TupleOnly)
 }
 
-func (f *Flags) afterLoad(context.Context) {}
+func (f *Flags) afterLoad() {}
 
 // +checklocksignore
-func (f *Flags) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (f *Flags) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &f.MostRecent)
 	stateSourceObject.Load(1, &f.LoadBalanced)
 	stateSourceObject.Load(2, &f.TupleOnly)

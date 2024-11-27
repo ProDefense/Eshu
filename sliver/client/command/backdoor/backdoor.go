@@ -19,38 +19,36 @@ package backdoor
 */
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bishopfox/sliver/client/console"
-	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/spf13/cobra"
+	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
 )
 
-// BackdoorCmd - Command to inject implant code into an existing binary.
-func BackdoorCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// BackdoorCmd - Command to inject implant code into an existing binary
+func BackdoorCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
 
-	remoteFilePath := args[0]
+	remoteFilePath := ctx.Args.String("remote-file")
 	if remoteFilePath == "" {
 		con.PrintErrorf("Please provide a remote file path. See `help backdoor` for more info")
 		return
 	}
 
-	profileName, _ := cmd.Flags().GetString("profile")
-
-	grpcCtx, cancel := con.GrpcContext(cmd)
-	defer cancel()
+	profileName := ctx.Flags.String("profile")
 
 	ctrl := make(chan bool)
 	msg := fmt.Sprintf("Backdooring %s ...", remoteFilePath)
 	con.SpinUntil(msg, ctrl)
-	backdoor, err := con.Rpc.Backdoor(grpcCtx, &clientpb.BackdoorReq{
+	backdoor, err := con.Rpc.Backdoor(context.Background(), &sliverpb.BackdoorReq{
 		FilePath:    remoteFilePath,
 		ProfileName: profileName,
-		Request:     con.ActiveTarget.Request(cmd),
+		Request:     con.ActiveTarget.Request(ctx),
 	})
 	ctrl <- true
 	<-ctrl

@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/xlab/treeprint"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/xlab/treeprint"
 )
 
 // A PsTree is a tree of *commonpb.Process
@@ -134,6 +133,7 @@ func (t *PsTree) Print() string {
 		t.addToTree(current, t.procTree.Children[int32(pid)].Children)
 	}
 	return t.printableTree.String()
+
 }
 
 func (t *PsTree) addToTree(tree treeprint.Tree, procs map[int32]*node) {

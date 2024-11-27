@@ -4,6 +4,7 @@
 // license that can be found in the LICENSE file.
 
 //go:build windows
+// +build windows
 
 // Package namedpipe implements a net.Conn and net.Listener around Windows named pipes.
 package namedpipe
@@ -28,7 +29,7 @@ type pipe struct {
 
 type messageBytePipe struct {
 	pipe
-	writeClosed atomic.Bool
+	writeClosed int32
 	readEOF     bool
 }
 
@@ -50,17 +51,17 @@ func (f *pipe) SetDeadline(t time.Time) error {
 
 // CloseWrite closes the write side of a message pipe in byte mode.
 func (f *messageBytePipe) CloseWrite() error {
-	if !f.writeClosed.CompareAndSwap(false, true) {
+	if !atomic.CompareAndSwapInt32(&f.writeClosed, 0, 1) {
 		return io.ErrClosedPipe
 	}
 	err := f.file.Flush()
 	if err != nil {
-		f.writeClosed.Store(false)
+		atomic.StoreInt32(&f.writeClosed, 0)
 		return err
 	}
 	_, err = f.file.Write(nil)
 	if err != nil {
-		f.writeClosed.Store(false)
+		atomic.StoreInt32(&f.writeClosed, 0)
 		return err
 	}
 	return nil
@@ -69,7 +70,7 @@ func (f *messageBytePipe) CloseWrite() error {
 // Write writes bytes to a message pipe in byte mode. Zero-byte writes are ignored, since
 // they are used to implement CloseWrite.
 func (f *messageBytePipe) Write(b []byte) (int, error) {
-	if f.writeClosed.Load() {
+	if atomic.LoadInt32(&f.writeClosed) != 0 {
 		return 0, io.ErrClosedPipe
 	}
 	if len(b) == 0 {

@@ -21,17 +21,15 @@ package privilege
 import (
 	"context"
 
-	"google.golang.org/protobuf/proto"
-
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"google.golang.org/protobuf/proto"
 )
 
 // GetSystemCmd - Windows only, attempt to get SYSTEM on the remote system
-func GetSystemCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func GetSystemCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
@@ -42,13 +40,13 @@ func GetSystemCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 		return
 	}
 
-	process, _ := cmd.Flags().GetString("process")
+	process := ctx.Flags.String("process")
 	config := con.GetActiveSessionConfig()
 	ctrl := make(chan bool)
 	con.SpinUntil("Attempting to create a new sliver session as 'NT AUTHORITY\\SYSTEM'...", ctrl)
 
 	getSystem, err := con.Rpc.GetSystem(context.Background(), &clientpb.GetSystemReq{
-		Request:        con.ActiveTarget.Request(cmd),
+		Request:        con.ActiveTarget.Request(ctx),
 		Config:         config,
 		HostingProcess: process,
 	})
@@ -75,7 +73,7 @@ func GetSystemCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 }
 
 // PrintGetSystem - Print the results of get system
-func PrintGetSystem(getsystemResp *sliverpb.GetSystem, con *console.SliverClient) {
+func PrintGetSystem(getsystemResp *sliverpb.GetSystem, con *console.SliverConsoleClient) {
 	if getsystemResp.Response != nil && getsystemResp.Response.GetErr() != "" {
 		con.PrintErrorf("%s\n", getsystemResp.GetResponse().GetErr())
 		return

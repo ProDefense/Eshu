@@ -60,7 +60,7 @@ func (p *Password) Prompt(config *PromptConfig) (interface{}, error) {
 
 	// no help msg?  Just return any response
 	if p.Help == "" {
-		line, err := rr.ReadLine(config.HideCharacter)
+		line, err := rr.ReadLine('*')
 		return string(line), err
 	}
 
@@ -69,7 +69,7 @@ func (p *Password) Prompt(config *PromptConfig) (interface{}, error) {
 	var line []rune
 	// process answers looking for help prompt answer
 	for {
-		line, err = rr.ReadLine(config.HideCharacter)
+		line, err = rr.ReadLine('*')
 		if err != nil {
 			return string(line), err
 		}
@@ -96,7 +96,7 @@ func (p *Password) Prompt(config *PromptConfig) (interface{}, error) {
 	}
 
 	lineStr := string(line)
-	p.AppendRenderedText(strings.Repeat(string(config.HideCharacter), len(lineStr)))
+	p.AppendRenderedText(strings.Repeat("*", len(lineStr)))
 	return lineStr, err
 }
 

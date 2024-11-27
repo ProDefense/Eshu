@@ -353,7 +353,6 @@ const (
 	PausedReasonOther            PausedReason = "other"
 	PausedReasonPromiseRejection PausedReason = "promiseRejection"
 	PausedReasonXHR              PausedReason = "XHR"
-	PausedReasonStep             PausedReason = "step"
 )
 
 // MarshalEasyJSON satisfies easyjson.Marshaler.
@@ -394,8 +393,6 @@ func (t *PausedReason) UnmarshalEasyJSON(in *jlexer.Lexer) {
 		*t = PausedReasonPromiseRejection
 	case PausedReasonXHR:
 		*t = PausedReasonXHR
-	case PausedReasonStep:
-		*t = PausedReasonStep
 
 	default:
 		in.AddError(fmt.Errorf("unknown PausedReason value: %v", v))

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2017-2023 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package tun
@@ -8,13 +8,13 @@ package tun
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"sync"
 	"syscall"
 	"unsafe"
 
+	"golang.org/x/net/ipv6"
 	"golang.org/x/sys/unix"
 )
 
@@ -114,10 +114,10 @@ func CreateTUN(name string, mtu int) (Device, error) {
 	var err error
 
 	if ifIndex != -1 {
-		tunfile, err = os.OpenFile(fmt.Sprintf("/dev/tun%d", ifIndex), unix.O_RDWR|unix.O_CLOEXEC, 0)
+		tunfile, err = os.OpenFile(fmt.Sprintf("/dev/tun%d", ifIndex), unix.O_RDWR, 0)
 	} else {
 		for ifIndex = 0; ifIndex < 256; ifIndex++ {
-			tunfile, err = os.OpenFile(fmt.Sprintf("/dev/tun%d", ifIndex), unix.O_RDWR|unix.O_CLOEXEC, 0)
+			tunfile, err = os.OpenFile(fmt.Sprintf("/dev/tun%d", ifIndex), unix.O_RDWR, 0)
 			if err == nil || !errors.Is(err, syscall.EBUSY) {
 				break
 			}
@@ -165,7 +165,7 @@ func CreateTUNFromFile(file *os.File, mtu int) (Device, error) {
 		return nil, err
 	}
 
-	tun.routeSocket, err = unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.AF_UNSPEC)
+	tun.routeSocket, err = unix.Socket(unix.AF_ROUTE, unix.SOCK_RAW, unix.AF_UNSPEC)
 	if err != nil {
 		tun.tunFile.Close()
 		return nil, err
@@ -200,47 +200,49 @@ func (tun *NativeTun) File() *os.File {
 	return tun.tunFile
 }
 
-func (tun *NativeTun) Events() <-chan Event {
+func (tun *NativeTun) Events() chan Event {
 	return tun.events
 }
 
-func (tun *NativeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+func (tun *NativeTun) Read(buff []byte, offset int) (int, error) {
 	select {
 	case err := <-tun.errors:
 		return 0, err
 	default:
-		buf := bufs[0][offset-4:]
-		n, err := tun.tunFile.Read(buf[:])
+		buff := buff[offset-4:]
+		n, err := tun.tunFile.Read(buff[:])
 		if n < 4 {
 			return 0, err
 		}
-		sizes[0] = n - 4
-		return 1, err
+		return n - 4, err
 	}
 }
 
-func (tun *NativeTun) Write(bufs [][]byte, offset int) (int, error) {
-	if offset < 4 {
-		return 0, io.ErrShortBuffer
+func (tun *NativeTun) Write(buff []byte, offset int) (int, error) {
+	// reserve space for header
+
+	buff = buff[offset-4:]
+
+	// add packet information header
+
+	buff[0] = 0x00
+	buff[1] = 0x00
+	buff[2] = 0x00
+
+	if buff[4]>>4 == ipv6.Version {
+		buff[3] = unix.AF_INET6
+	} else {
+		buff[3] = unix.AF_INET
 	}
-	for i, buf := range bufs {
-		buf = buf[offset-4:]
-		buf[0] = 0x00
-		buf[1] = 0x00
-		buf[2] = 0x00
-		switch buf[4] >> 4 {
-		case 4:
-			buf[3] = unix.AF_INET
-		case 6:
-			buf[3] = unix.AF_INET6
-		default:
-			return i, unix.EAFNOSUPPORT
-		}
-		if _, err := tun.tunFile.Write(buf); err != nil {
-			return i, err
-		}
-	}
-	return len(bufs), nil
+
+	// write
+
+	return tun.tunFile.Write(buff)
+}
+
+func (tun *NativeTun) Flush() error {
+	// TODO: can flushing be implemented by buffering and using sendmmsg?
+	return nil
 }
 
 func (tun *NativeTun) Close() error {
@@ -268,7 +270,7 @@ func (tun *NativeTun) setMTU(n int) error {
 
 	fd, err := unix.Socket(
 		unix.AF_INET,
-		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC,
+		unix.SOCK_DGRAM,
 		0,
 	)
 	if err != nil {
@@ -302,7 +304,7 @@ func (tun *NativeTun) MTU() (int, error) {
 
 	fd, err := unix.Socket(
 		unix.AF_INET,
-		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC,
+		unix.SOCK_DGRAM,
 		0,
 	)
 	if err != nil {
@@ -326,8 +328,4 @@ func (tun *NativeTun) MTU() (int, error) {
 	}
 
 	return int(*(*int32)(unsafe.Pointer(&ifr.MTU))), nil
-}
-
-func (tun *NativeTun) BatchSize() int {
-	return 1
 }

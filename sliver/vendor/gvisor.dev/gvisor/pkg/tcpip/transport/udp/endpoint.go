@@ -21,10 +21,9 @@ import (
 	"math"
 	"time"
 
-	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/ports"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -353,10 +352,7 @@ var _ tcpip.EndpointWithPreflight = (*endpoint)(nil)
 // is specified, binds the endpoint to that address.
 func (e *endpoint) Preflight(opts tcpip.WriteOptions) tcpip.Error {
 	var r bytes.Reader
-	udpInfo, err := e.prepareForWrite(&r, opts)
-	if err == nil {
-		udpInfo.ctx.Release()
-	}
+	_, err := e.prepareForWrite(&r, opts)
 	return err
 }
 
@@ -373,7 +369,7 @@ func (e *endpoint) Write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, tcp
 		e.stats.WriteErrors.WriteClosed.Increment()
 	case *tcpip.ErrInvalidEndpointState:
 		e.stats.WriteErrors.InvalidEndpointState.Increment()
-	case *tcpip.ErrHostUnreachable, *tcpip.ErrBroadcastDisabled, *tcpip.ErrNetworkUnreachable:
+	case *tcpip.ErrNoRoute, *tcpip.ErrBroadcastDisabled, *tcpip.ErrNetworkUnreachable:
 		// Errors indicating any problem with IP routing of the packet.
 		e.stats.SendErrors.NoRoute.Increment()
 	default:
@@ -436,7 +432,7 @@ func (e *endpoint) prepareForWrite(p tcpip.Payloader, opts tcpip.WriteOptions) (
 		return udpPacketInfo{}, &tcpip.ErrMessageTooLong{}
 	}
 
-	var buf buffer.Buffer
+	var buf bufferv2.Buffer
 	if _, err := buf.WriteFromReader(p, int64(p.Len())); err != nil {
 		buf.Release()
 		ctx.Release()
@@ -476,7 +472,7 @@ func (e *endpoint) write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, tcp
 	dataSz := udpInfo.data.Size()
 	pktInfo := udpInfo.ctx.PacketInfo()
 	pkt := udpInfo.ctx.TryNewPacketBuffer(header.UDPMinimumSize+int(pktInfo.MaxHeaderLength), udpInfo.data)
-	if pkt.IsNil() {
+	if pkt == nil {
 		return 0, &tcpip.ErrWouldBlock{}
 	}
 	defer pkt.DecRef()
@@ -498,9 +494,9 @@ func (e *endpoint) write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, tcp
 	// On IPv6, UDP checksum is not optional (RFC2460 Section 8.1).
 	if pktInfo.RequiresTXTransportChecksum &&
 		(!e.ops.GetNoChecksum() || pktInfo.NetProto == header.IPv6ProtocolNumber) {
-		xsum := udp.CalculateChecksum(checksum.Combine(
+		xsum := udp.CalculateChecksum(header.ChecksumCombine(
 			header.PseudoHeaderChecksum(ProtocolNumber, pktInfo.LocalAddress, pktInfo.RemoteAddress, length),
-			pkt.Data().Checksum(),
+			pkt.Data().AsRange().Checksum(),
 		))
 		// As per RFC 768 page 2,
 		//
@@ -593,7 +589,7 @@ func (e *endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
 // udpPacketInfo holds information needed to send a UDP packet.
 type udpPacketInfo struct {
 	ctx        network.WriteContext
-	data       buffer.Buffer
+	data       bufferv2.Buffer
 	localPort  uint16
 	remotePort uint16
 }
@@ -679,16 +675,16 @@ func (e *endpoint) Connect(addr tcpip.FullAddress) tcpip.Error {
 
 		oldPortFlags := e.boundPortFlags
 
+		nextID, btd, err := e.registerWithStack(netProtos, nextID)
+		if err != nil {
+			return err
+		}
+
 		// Remove the old registration.
 		if e.localPort != 0 {
 			previousID.LocalPort = e.localPort
 			previousID.RemotePort = e.remotePort
 			e.stack.UnregisterTransportEndpoint(e.effectiveNetProtos, ProtocolNumber, previousID, e, oldPortFlags, e.boundBindToDevice)
-		}
-
-		nextID, btd, err := e.registerWithStack(netProtos, nextID)
-		if err != nil {
-			return err
 		}
 
 		e.localPort = nextID.LocalPort
@@ -745,9 +741,6 @@ func (e *endpoint) Shutdown(flags tcpip.ShutdownFlags) tcpip.Error {
 		}
 	}
 
-	if e.net.State() == transport.DatagramEndpointStateBound {
-		return &tcpip.ErrNotConnected{}
-	}
 	return nil
 }
 
@@ -773,7 +766,7 @@ func (e *endpoint) registerWithStack(netProtos []tcpip.NetworkProtocolNumber, id
 			BindToDevice: bindToDevice,
 			Dest:         tcpip.FullAddress{},
 		}
-		port, err := e.stack.ReservePort(e.stack.SecureRNG(), portRes, nil /* testPort */)
+		port, err := e.stack.ReservePort(e.stack.Rand(), portRes, nil /* testPort */)
 		if err != nil {
 			return id, bindToDevice, err
 		}
@@ -810,7 +803,7 @@ func (e *endpoint) bindLocked(addr tcpip.FullAddress) tcpip.Error {
 		// wildcard (empty) address, and this is an IPv6 endpoint with v6only
 		// set to false.
 		netProtos := []tcpip.NetworkProtocolNumber{boundNetProto}
-		if boundNetProto == header.IPv6ProtocolNumber && !e.ops.GetV6Only() && boundAddr == (tcpip.Address{}) && e.stack.CheckNetworkProtocol(header.IPv4ProtocolNumber) {
+		if boundNetProto == header.IPv6ProtocolNumber && !e.ops.GetV6Only() && boundAddr == "" && e.stack.CheckNetworkProtocol(header.IPv4ProtocolNumber) {
 			netProtos = []tcpip.NetworkProtocolNumber{
 				header.IPv6ProtocolNumber,
 				header.IPv4ProtocolNumber,
@@ -914,12 +907,12 @@ func (e *endpoint) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketB
 	netHdr := pkt.Network()
 	lengthValid, csumValid := header.UDPValid(
 		hdr,
-		func() uint16 { return pkt.Data().Checksum() },
+		func() uint16 { return pkt.Data().AsRange().Checksum() },
 		uint16(pkt.Data().Size()),
 		pkt.NetworkProtocolNumber,
 		netHdr.SourceAddress(),
 		netHdr.DestinationAddress(),
-		pkt.RXChecksumValidated)
+		pkt.RXTransportChecksumValidated)
 	if !lengthValid {
 		// Malformed packet.
 		e.stack.Stats().UDP.MalformedPacketsReceived.Increment()
@@ -1025,7 +1018,6 @@ func (e *endpoint) onICMPError(err tcpip.Error, transErr stack.TransportError, p
 		}
 
 		id := e.net.Info().ID
-		e.mu.RLock()
 		e.SocketOptions().QueueErr(&tcpip.SockError{
 			Err:     err,
 			Cause:   transErr,
@@ -1042,7 +1034,6 @@ func (e *endpoint) onICMPError(err tcpip.Error, transErr stack.TransportError, p
 			},
 			NetProto: pkt.NetworkProtocolNumber,
 		})
-		e.mu.RUnlock()
 	}
 
 	// Notify of the error.

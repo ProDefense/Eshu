@@ -19,30 +19,25 @@ package socks
 */
 
 import (
-	"fmt"
 	"sort"
-	"strconv"
 
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/client/core"
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
 )
 
-// SocksCmd - Display information about tunneled port forward(s).
-func SocksCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// SocksCmd - Display information about tunneled port forward(s)
+func SocksCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	socks := core.SocksProxies.List()
 	if len(socks) == 0 {
 		con.PrintInfof("No socks5 proxies\n")
 		return
 	}
-	sort.Slice(socks, func(i, j int) bool {
+	sort.Slice(socks[:], func(i, j int) bool {
 		return socks[i].ID < socks[j].ID
 	})
-
-	session := con.ActiveTarget.GetSession()
 
 	tw := table.NewWriter()
 	tw.SetStyle(settings.GetTableStyle(con))
@@ -54,37 +49,8 @@ func SocksCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		"Passwords",
 	})
 	for _, p := range socks {
-		// if we're in an active session, just display socks proxies for the session
-		if session != nil && session.ID != p.SessionID {
-			continue
-		}
 		tw.AppendRow(table.Row{p.ID, p.SessionID, p.BindAddr, p.Username, p.Password})
 	}
 
 	con.Printf("%s\n", tw.Render())
-}
-
-// SocksIDCompleter completes IDs of remote of socks proxy servers.
-func SocksIDCompleter(_ *console.SliverClient) carapace.Action {
-	callback := func(_ carapace.Context) carapace.Action {
-		results := make([]string, 0)
-
-		socks := core.SocksProxies.List()
-		if len(socks) == 0 {
-			return carapace.ActionMessage("no active Socks proxies")
-		}
-
-		for _, serv := range socks {
-			results = append(results, strconv.Itoa(int(serv.ID)))
-			results = append(results, fmt.Sprintf("%s [%s] (%s)", serv.BindAddr, serv.Username, serv.SessionID))
-		}
-
-		if len(results) == 0 {
-			return carapace.ActionMessage("no Socks servers")
-		}
-
-		return carapace.ActionValuesDescribed(results...).Tag("socks servers")
-	}
-
-	return carapace.ActionCallback(callback)
 }

@@ -80,20 +80,10 @@ func WithLogger(l Logger) Option {
 	}
 }
 
-// WithDial Optional function for dialing out.
-// The callback set by WithDialAndRequest will be called first.
+// WithDial Optional function for dialing out
 func WithDial(dial func(ctx context.Context, network, addr string) (net.Conn, error)) Option {
 	return func(s *Server) {
 		s.dial = dial
-	}
-}
-
-// WithDialAndRequest Optional function for dialing out with the access of request detail.
-func WithDialAndRequest(
-	dial func(ctx context.Context, network, addr string, request *Request) (net.Conn, error),
-) Option {
-	return func(s *Server) {
-		s.dialWithRequest = dial
 	}
 }
 

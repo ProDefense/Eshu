@@ -28,7 +28,6 @@ package handlers
 
 import (
 	"os"
-
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 )
 
@@ -43,19 +42,12 @@ var (
 		sliverpb.MsgRmReq:          rmHandler,
 		sliverpb.MsgMkdirReq:       mkdirHandler,
 		sliverpb.MsgMvReq:          mvHandler,
-		sliverpb.MsgCpReq:          cpHandler,
 		sliverpb.MsgExecuteReq:     executeHandler,
 		sliverpb.MsgSetEnvReq:      setEnvHandler,
 		sliverpb.MsgEnvReq:         getEnvHandler,
 		sliverpb.MsgUnsetEnvReq:    unsetEnvHandler,
 		sliverpb.MsgReconfigureReq: reconfigureHandler,
 		sliverpb.MsgChtimesReq:     chtimesHandler,
-		sliverpb.MsgGrepReq:        grepHandler,
-
-		// Wasm Extensions - Note that execution can be done via a tunnel handler
-		sliverpb.MsgRegisterWasmExtensionReq:   registerWasmExtensionHandler,
-		sliverpb.MsgDeregisterWasmExtensionReq: deregisterWasmExtensionHandler,
-		sliverpb.MsgListWasmExtensionsReq:      listWasmExtensionsHandler,
 	}
 )
 
@@ -65,16 +57,16 @@ func GetSystemHandlers() map[uint32]RPCHandler {
 }
 
 // GetSystemPivotHandlers - Not supported
-func GetSystemPivotHandlers() map[uint32]TunnelHandler {
-	return map[uint32]TunnelHandler{}
+func GetSystemPivotHandlers() map[uint32]PivotHandler {
+	return map[uint32]PivotHandler{}
 }
 
 // Stub
-func getUid(fileInfo os.FileInfo) string {
+func getUid(fileInfo os.FileInfo) (string) {
 	return ""
 }
 
 // Stub
-func getGid(fileInfo os.FileInfo) string {
+func getGid(fileInfo os.FileInfo) (string) {
 	return ""
 }

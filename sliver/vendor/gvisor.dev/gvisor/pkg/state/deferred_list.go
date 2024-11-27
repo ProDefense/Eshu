@@ -1,20 +1,5 @@
 package state
 
-// ElementMapper provides an identity mapping by default.
-//
-// This can be replaced to provide a struct that maps elements to linker
-// objects, if they are not the same. An ElementMapper is not typically
-// required if: Linker is left as is, Element is left as is, or Linker and
-// Element are the same type.
-type deferredElementMapper struct{}
-
-// linkerFor maps an Element to a Linker.
-//
-// This default implementation should be inlined.
-//
-//go:nosplit
-func (deferredElementMapper) linkerFor(elem *objectEncodeState) *objectEncodeState { return elem }
-
 // List is an intrusive list. Entries can be added to or removed from the list
 // in O(1) time and with no additional memory allocations.
 //
@@ -65,7 +50,7 @@ func (l *deferredList) Back() *objectEncodeState {
 //
 //go:nosplit
 func (l *deferredList) Len() (count int) {
-	for e := l.Front(); e != nil; e = (deferredElementMapper{}.linkerFor(e)).Next() {
+	for e := l.Front(); e != nil; e = (deferredMapper{}.linkerFor(e)).Next() {
 		count++
 	}
 	return count
@@ -75,11 +60,11 @@ func (l *deferredList) Len() (count int) {
 //
 //go:nosplit
 func (l *deferredList) PushFront(e *objectEncodeState) {
-	linker := deferredElementMapper{}.linkerFor(e)
+	linker := deferredMapper{}.linkerFor(e)
 	linker.SetNext(l.head)
 	linker.SetPrev(nil)
 	if l.head != nil {
-		deferredElementMapper{}.linkerFor(l.head).SetPrev(e)
+		deferredMapper{}.linkerFor(l.head).SetPrev(e)
 	} else {
 		l.tail = e
 	}
@@ -95,8 +80,8 @@ func (l *deferredList) PushFrontList(m *deferredList) {
 		l.head = m.head
 		l.tail = m.tail
 	} else if m.head != nil {
-		deferredElementMapper{}.linkerFor(l.head).SetPrev(m.tail)
-		deferredElementMapper{}.linkerFor(m.tail).SetNext(l.head)
+		deferredMapper{}.linkerFor(l.head).SetPrev(m.tail)
+		deferredMapper{}.linkerFor(m.tail).SetNext(l.head)
 
 		l.head = m.head
 	}
@@ -108,11 +93,11 @@ func (l *deferredList) PushFrontList(m *deferredList) {
 //
 //go:nosplit
 func (l *deferredList) PushBack(e *objectEncodeState) {
-	linker := deferredElementMapper{}.linkerFor(e)
+	linker := deferredMapper{}.linkerFor(e)
 	linker.SetNext(nil)
 	linker.SetPrev(l.tail)
 	if l.tail != nil {
-		deferredElementMapper{}.linkerFor(l.tail).SetNext(e)
+		deferredMapper{}.linkerFor(l.tail).SetNext(e)
 	} else {
 		l.head = e
 	}
@@ -128,8 +113,8 @@ func (l *deferredList) PushBackList(m *deferredList) {
 		l.head = m.head
 		l.tail = m.tail
 	} else if m.head != nil {
-		deferredElementMapper{}.linkerFor(l.tail).SetNext(m.head)
-		deferredElementMapper{}.linkerFor(m.head).SetPrev(l.tail)
+		deferredMapper{}.linkerFor(l.tail).SetNext(m.head)
+		deferredMapper{}.linkerFor(m.head).SetPrev(l.tail)
 
 		l.tail = m.tail
 	}
@@ -141,8 +126,8 @@ func (l *deferredList) PushBackList(m *deferredList) {
 //
 //go:nosplit
 func (l *deferredList) InsertAfter(b, e *objectEncodeState) {
-	bLinker := deferredElementMapper{}.linkerFor(b)
-	eLinker := deferredElementMapper{}.linkerFor(e)
+	bLinker := deferredMapper{}.linkerFor(b)
+	eLinker := deferredMapper{}.linkerFor(e)
 
 	a := bLinker.Next()
 
@@ -151,7 +136,7 @@ func (l *deferredList) InsertAfter(b, e *objectEncodeState) {
 	bLinker.SetNext(e)
 
 	if a != nil {
-		deferredElementMapper{}.linkerFor(a).SetPrev(e)
+		deferredMapper{}.linkerFor(a).SetPrev(e)
 	} else {
 		l.tail = e
 	}
@@ -161,8 +146,8 @@ func (l *deferredList) InsertAfter(b, e *objectEncodeState) {
 //
 //go:nosplit
 func (l *deferredList) InsertBefore(a, e *objectEncodeState) {
-	aLinker := deferredElementMapper{}.linkerFor(a)
-	eLinker := deferredElementMapper{}.linkerFor(e)
+	aLinker := deferredMapper{}.linkerFor(a)
+	eLinker := deferredMapper{}.linkerFor(e)
 
 	b := aLinker.Prev()
 	eLinker.SetNext(a)
@@ -170,7 +155,7 @@ func (l *deferredList) InsertBefore(a, e *objectEncodeState) {
 	aLinker.SetPrev(e)
 
 	if b != nil {
-		deferredElementMapper{}.linkerFor(b).SetNext(e)
+		deferredMapper{}.linkerFor(b).SetNext(e)
 	} else {
 		l.head = e
 	}
@@ -180,18 +165,18 @@ func (l *deferredList) InsertBefore(a, e *objectEncodeState) {
 //
 //go:nosplit
 func (l *deferredList) Remove(e *objectEncodeState) {
-	linker := deferredElementMapper{}.linkerFor(e)
+	linker := deferredMapper{}.linkerFor(e)
 	prev := linker.Prev()
 	next := linker.Next()
 
 	if prev != nil {
-		deferredElementMapper{}.linkerFor(prev).SetNext(next)
+		deferredMapper{}.linkerFor(prev).SetNext(next)
 	} else if l.head == e {
 		l.head = next
 	}
 
 	if next != nil {
-		deferredElementMapper{}.linkerFor(next).SetPrev(prev)
+		deferredMapper{}.linkerFor(next).SetPrev(prev)
 	} else if l.tail == e {
 		l.tail = prev
 	}

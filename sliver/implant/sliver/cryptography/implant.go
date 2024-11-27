@@ -21,6 +21,7 @@ package cryptography
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 
 	// {{if .Config.Debug}}
@@ -29,28 +30,32 @@ import (
 )
 
 var (
-	// PeerAgePublicKey - The implant's age public key
-	PeerAgePublicKey = "{{.Build.PeerPublicKey}}"
-	// peerPrivateKey - The implant's age private key
-	peerAgePrivateKey = "{{.Build.PeerPrivateKey}}"
-	// PublicKeySignature - The implant's age public key minisigned'd
-	PeerAgePublicKeySignature = `{{.Build.PeerPublicKeySignature}}`
-	// serverPublicKey - Server's ECC public key
-	serverAgePublicKey = "{{.Build.AgeServerPublicKey}}"
-	// serverMinisignPublicKey - The server's minisign public key
-	serverMinisignPublicKey = `{{.Build.MinisignServerPublicKey}}`
+	// ECCPublicKey - The implant's ECC public key
+	ECCPublicKey = "{{.Config.ECCPublicKey}}"
+	// eccPrivateKey - The implant's ECC private key
+	eccPrivateKey = "{{.Config.ECCPrivateKey}}"
+	// eccPublicKeySignature - The implant's public key minisigned'd
+	ECCPublicKeySignature = `{{.Config.ECCPublicKeySignature}}`
+	// eccServerPublicKey - Server's ECC public key
+	eccServerPublicKey = "{{.Config.ECCServerPublicKey}}"
+	// minisignServerPublicKey - The server's minisign public key
+	minisignServerPublicKey = `{{.Config.MinisignServerPublicKey}}`
+
+	// TOTP secret value
+	totpSecret = "{{.OTPSecret}}"
 
 	// ErrInvalidPeerKey - Peer to peer key exchange failed
 	ErrInvalidPeerKey = errors.New("invalid peer key")
 )
 
 // {{if .Config.Debug}} - Used for unit tests, remove from normal builds where these values are set at compile-time
-func SetSecrets(peerPublicKey, peerPrivateKey, peerPublicKeySignature, serverPublicKey, minisignServerPublicKey string) {
-	PeerAgePublicKey = peerPublicKey
-	peerAgePrivateKey = peerPrivateKey
-	PeerAgePublicKeySignature = peerPublicKeySignature
-	serverAgePublicKey = serverPublicKey
-	serverMinisignPublicKey = minisignServerPublicKey
+func SetSecrets(newEccPublicKey, newEccPrivateKey, newEccPublicKeySignature, newEccServerPublicKey, newTotpSecret, newMinisignServerPublicKey string) {
+	ECCPublicKey = newEccPublicKey
+	eccPrivateKey = newEccPrivateKey
+	ECCPublicKeySignature = newEccPublicKeySignature
+	eccServerPublicKey = newEccServerPublicKey
+	totpSecret = newTotpSecret
+	minisignServerPublicKey = newMinisignServerPublicKey
 }
 
 // {{end}}
@@ -58,19 +63,19 @@ func SetSecrets(peerPublicKey, peerPrivateKey, peerPublicKeySignature, serverPub
 // GetPeerAgeKeyPair - Get the implant's key pair
 func GetPeerAgeKeyPair() *AgeKeyPair {
 	return &AgeKeyPair{
-		Public:  PeerAgePublicKey,
-		Private: peerAgePrivateKey,
+		Public:  ECCPublicKey,
+		Private: eccPrivateKey,
 	}
 }
 
 // GetServerAgePublicKey - Get the decoded server public key
 func GetServerAgePublicKey() string {
-	return serverAgePublicKey
+	return eccServerPublicKey
 }
 
 // MinisignVerify - Verify a minisign signature
 func MinisignVerify(message []byte, signature string) bool {
-	serverPublicKey, err := DecodeMinisignPublicKey(serverMinisignPublicKey)
+	serverMinisignPublicKey, err := DecodeMinisignPublicKey(minisignServerPublicKey)
 	if err != nil {
 		// {{if .Config.Debug}}
 		log.Printf("failed to decode minisign public key: %s", err)
@@ -84,7 +89,7 @@ func MinisignVerify(message []byte, signature string) bool {
 		// {{end}}
 		return false
 	}
-	valid, err := serverPublicKey.Verify(message, sig)
+	valid, err := serverMinisignPublicKey.Verify(message, sig)
 	if err != nil {
 		// {{if .Config.Debug}}
 		log.Printf("minisign signature validation error: %s", err)
@@ -95,6 +100,17 @@ func MinisignVerify(message []byte, signature string) bool {
 	log.Printf("minisign signature validation: %v", valid)
 	// {{end}}
 	return valid
+}
+
+// GetServerECCPublicKey - Get the decoded server public key
+func GetServerECCPublicKey() *[32]byte {
+	publicRaw, err := base64.RawStdEncoding.DecodeString(eccServerPublicKey)
+	if err != nil {
+		return nil
+	}
+	var public [32]byte
+	copy(public[:], publicRaw)
+	return &public
 }
 
 // AgeKeyExToServer - Encrypt using the server's public key

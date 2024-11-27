@@ -33,21 +33,20 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/desertbit/grumble"
+
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/spf13/cobra"
 )
 
 var (
-	// ErrNoHosts - No hosts in database.
+	// ErrNoHosts - No hosts in database
 	ErrNoHosts = errors.New("no hosts")
-	// ErrNoIOCs - No IOCs in database
-	ErrNoIOCs = errors.New("no IOCs in database for selected host")
 	// ErrNoSelection - No selection made
 	ErrNoSelection = errors.New("no selection")
 )
 
-// HostsCmd - Main hosts command.
-func HostsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// HostsCmd - Main hosts command
+func HostsCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	allHosts, err := con.Rpc.Hosts(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		con.PrintErrorf("%s", err)
@@ -60,7 +59,7 @@ func HostsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-func hostsTable(hosts []*clientpb.Host, con *console.SliverClient) string {
+func hostsTable(hosts []*clientpb.Host, con *console.SliverConsoleClient) string {
 	tw := table.NewWriter()
 	tw.SetStyle(settings.GetTableStyle(con))
 	tw.AppendHeader(table.Row{
@@ -96,7 +95,7 @@ func hostsTable(hosts []*clientpb.Host, con *console.SliverClient) string {
 	return tw.Render()
 }
 
-func hostSessions(hostUUID string, con *console.SliverClient) string {
+func hostSessions(hostUUID string, con *console.SliverConsoleClient) string {
 	hostSessions := SessionsForHost(hostUUID, con)
 	if len(hostSessions) == 0 {
 		return "None"
@@ -108,7 +107,7 @@ func hostSessions(hostUUID string, con *console.SliverClient) string {
 	return fmt.Sprintf("%d", len(sessionIDs))
 }
 
-func hostBeacons(hostUUID string, con *console.SliverClient) string {
+func hostBeacons(hostUUID string, con *console.SliverConsoleClient) string {
 	beacons, err := con.Rpc.GetBeacons(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		return "Error"
@@ -126,8 +125,8 @@ func hostBeacons(hostUUID string, con *console.SliverClient) string {
 	}
 }
 
-// SessionsForHost - Find session for a given host by id.
-func SessionsForHost(hostUUID string, con *console.SliverClient) []*clientpb.Session {
+// SessionsForHost - Find session for a given host by id
+func SessionsForHost(hostUUID string, con *console.SliverConsoleClient) []*clientpb.Session {
 	sessions, err := con.Rpc.GetSessions(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		return []*clientpb.Session{}
@@ -141,8 +140,8 @@ func SessionsForHost(hostUUID string, con *console.SliverClient) []*clientpb.Ses
 	return hostSessions
 }
 
-// SelectHost - Interactively select a host from the database.
-func SelectHost(con *console.SliverClient) (*clientpb.Host, error) {
+// SelectHost - Interactively select a host from the database
+func SelectHost(con *console.SliverConsoleClient) (*clientpb.Host, error) {
 	allHosts, err := con.Rpc.Hosts(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		return nil, err
@@ -150,7 +149,7 @@ func SelectHost(con *console.SliverClient) (*clientpb.Host, error) {
 	// Sort the keys because maps have a randomized order, these keys must be ordered for the selection
 	// to work properly since we rely on the index of the user's selection to find the session in the map
 	var keys []string
-	hostMap := make(map[string]*clientpb.Host)
+	var hostMap = make(map[string]*clientpb.Host)
 	for _, host := range allHosts.Hosts {
 		keys = append(keys, host.HostUUID)
 		hostMap[host.HostUUID] = host

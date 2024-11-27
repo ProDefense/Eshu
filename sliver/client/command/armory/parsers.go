@@ -19,14 +19,12 @@ package armory
 */
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,7 +33,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/client/assets"
-	"github.com/bishopfox/sliver/util/minisign"
+	"github.com/bishopfox/sliver/server/cryptography/minisign"
 )
 
 // ArmoryIndexParser - Generic interface to fetch armory indexes
@@ -69,18 +67,6 @@ type armoryPkgResponse struct {
 	TarGzURL string `json:"tar_gz_url"` // Raw tar.gz url
 }
 
-func calculatePackageHash(pkg *ArmoryPackage) string {
-	if pkg == nil {
-		return ""
-	}
-
-	hasher := sha256.New()
-	// Hash some of the things that make the package unique
-	packageIdentifier := []byte(pkg.RepoURL + pkg.PublicKey + pkg.ArmoryName + pkg.CommandName)
-	hasher.Write(packageIdentifier)
-	return fmt.Sprintf("%x", hasher.Sum(nil))
-}
-
 //
 // Default Parsers for Self-Hosted Armories
 //
@@ -94,9 +80,6 @@ func DefaultArmoryIndexParser(armoryConfig *assets.ArmoryConfig, clientConfig Ar
 	}
 
 	resp, body, err := httpRequest(clientConfig, armoryConfig.RepoURL, armoryConfig, http.Header{})
-	if err != nil {
-		return nil, err
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New("api returned non-200 status code")
 	}
@@ -128,43 +111,7 @@ func DefaultArmoryIndexParser(armoryConfig *assets.ArmoryConfig, clientConfig Ar
 	if err != nil {
 		return nil, err
 	}
-	// Populate armory name and ID information for assets
-	for _, bundle := range armoryIndex.Bundles {
-		bundle.ArmoryName = armoryIndex.ArmoryConfig.Name
-	}
-	for _, alias := range armoryIndex.Aliases {
-		alias.ArmoryName = armoryIndex.ArmoryConfig.Name
-		alias.ArmoryPK = armoryIndex.ArmoryConfig.PublicKey
-		if cached := packageCacheLookupByCmdAndArmory(alias.CommandName, armoryIndex.ArmoryConfig.PublicKey); cached != nil {
-			// A package with this name is in the cache, so we will remove it here so that the latest version is added
-			// when the index is parsed
-			pkgCache.Delete(cached.ID)
-		}
-		alias.ID = calculatePackageHash(alias)
-	}
-	for _, extension := range armoryIndex.Extensions {
-		extension.ArmoryName = armoryIndex.ArmoryConfig.Name
-		extension.ArmoryPK = armoryIndex.ArmoryConfig.PublicKey
-		if cached := packageCacheLookupByCmdAndArmory(extension.CommandName, armoryIndex.ArmoryConfig.PublicKey); cached != nil {
-			// A package with this name is in the cache, so we will remove it here so that the latest version is added
-			// when the index is parsed
-			pkgCache.Delete(cached.ID)
-		}
-		extension.ID = calculatePackageHash(extension)
-	}
 	return armoryIndex, nil
-}
-
-func decodePackageSignature(sigString string) ([]byte, error) {
-	// Base64 decode the signature
-	decodedData := make([]byte, base64.StdEncoding.DecodedLen(len(sigString)))
-	_, err := base64.StdEncoding.Decode(decodedData, []byte(sigString))
-	if err != nil {
-		return nil, err
-	}
-	// If decodedData does not end up being base64.StdEncoding.DecodedLen(len(data)) bytes long, trim the null bytes
-	decodedData = bytes.Trim(decodedData, "\x00")
-	return decodedData, nil
 }
 
 // DefaultArmoryPkgParser - Parse the armory package manifest directly from the url
@@ -175,29 +122,25 @@ func DefaultArmoryPkgParser(armoryConfig *assets.ArmoryConfig, armoryPkg *Armory
 		return nil, nil, err
 	}
 
-	resp, body, err := httpRequest(clientConfig, armoryPkg.RepoURL, armoryConfig, http.Header{})
+	resp, body, err := httpRequest(clientConfig, armoryConfig.RepoURL, armoryConfig, http.Header{})
 	if err != nil {
 		return nil, nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("api returned non-200 status code (%d)", resp.StatusCode)
+		return nil, nil, errors.New("api returned non-200 status code")
 	}
 	pkgResp := &armoryPkgResponse{}
 	err = json.Unmarshal(body, pkgResp)
 	if err != nil {
 		return nil, nil, err
 	}
-	decodedSig, err := decodePackageSignature(pkgResp.Minisig)
-	if err != nil {
-		return nil, nil, err
-	}
-	sig, err := parsePkgMinsig(decodedSig)
+	sig, err := parsePkgMinsig([]byte(pkgResp.Minisig))
 	if err != nil {
 		return nil, nil, err
 	}
 	var tarGz []byte
 	if !sigOnly {
-		tarGzURL, err := url.Parse(pkgResp.TarGzURL)
+		tarGzURL, err := url.Parse(armoryPkg.RepoURL)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -298,20 +241,6 @@ func GithubAPIArmoryIndexParser(armoryConfig *assets.ArmoryConfig, clientConfig 
 	err = json.Unmarshal(armoryIndexData, armoryIndex)
 	if err != nil {
 		return nil, err
-	}
-	// Populate armory name and ID information for assets
-	for _, bundle := range armoryIndex.Bundles {
-		bundle.ArmoryName = armoryIndex.ArmoryConfig.Name
-	}
-	for _, alias := range armoryIndex.Aliases {
-		alias.ArmoryName = armoryIndex.ArmoryConfig.Name
-		alias.ArmoryPK = armoryIndex.ArmoryConfig.PublicKey
-		alias.ID = calculatePackageHash(alias)
-	}
-	for _, extension := range armoryIndex.Extensions {
-		extension.ArmoryName = armoryIndex.ArmoryConfig.Name
-		extension.ArmoryPK = armoryIndex.ArmoryConfig.PublicKey
-		extension.ID = calculatePackageHash(extension)
 	}
 	return armoryIndex, nil
 }
@@ -498,7 +427,7 @@ func httpRequest(clientConfig ArmoryHTTPConfig, reqURL string, armoryConfig *ass
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	return resp, body, err
 }
 
@@ -507,14 +436,8 @@ func downloadRequest(clientConfig ArmoryHTTPConfig, reqURL string, armoryConfig 
 		"Accept": {"application/octet-stream"},
 	}
 	resp, body, err := httpRequest(clientConfig, reqURL, armoryConfig, downloadHdr)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, fmt.Errorf("invalid response when downloading %s, try again later", reqURL)
-	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusFound {
-		return nil, fmt.Errorf("error downloading asset: http %d", resp.StatusCode)
+		return nil, fmt.Errorf("Error downloading asset: http %d", resp.StatusCode)
 	}
 
 	return body, err

@@ -3,8 +3,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// //go:linkname directives type-checked by checklinkname.
-// Runtime type copies checked by checkoffset.
+//go:build go1.13 && !go1.21
+// +build go1.13,!go1.21
+
+// //go:linkname directives type-checked by checklinkname. Any other
+// non-linkname assumptions outside the Go 1 compatibility guarantee should
+// have an accompanied vet check or version guard build tag.
+
+// Check type definitions and constants when updating Go version.
+//
+// TODO(b/165820485): add these checks to checklinkname.
 
 package sync
 
@@ -66,9 +74,23 @@ func Goready(gp uintptr, traceskip int, wakep bool) {
 	}
 	goready(gp, traceskip)
 	if supportsWakeSuppression && !wakep {
-		postGoReadyWakeSuppression()
+		preGoReadyWakeSuppression()
 	}
 }
+
+// Values for the reason argument to gopark, from Go's src/runtime/runtime2.go.
+const (
+	WaitReasonSelect      uint8 = 9
+	WaitReasonChanReceive uint8 = 14
+	WaitReasonSemacquire  uint8 = 18
+)
+
+// Values for the traceEv argument to gopark, from Go's src/runtime/trace.go.
+const (
+	TraceEvGoBlockRecv   byte = 23
+	TraceEvGoBlockSelect byte = 24
+	TraceEvGoBlockSync   byte = 25
+)
 
 // Rand32 returns a non-cryptographically-secure random uint32.
 func Rand32() uint32 {
@@ -94,15 +116,15 @@ func RandUintptr() uintptr {
 // MapKeyHasher returns a hash function for pointers of m's key type.
 //
 // Preconditions: m must be a map.
-func MapKeyHasher(m any) func(unsafe.Pointer, uintptr) uintptr {
+func MapKeyHasher(m interface{}) func(unsafe.Pointer, uintptr) uintptr {
 	if rtyp := reflect.TypeOf(m); rtyp.Kind() != reflect.Map {
 		panic(fmt.Sprintf("sync.MapKeyHasher: m is %v, not map", rtyp))
 	}
 	mtyp := *(**maptype)(unsafe.Pointer(&m))
-	return mtyp.Hasher
+	return mtyp.hasher
 }
 
-// maptype is equivalent to the beginning of internal/abi.MapType.
+// maptype is equivalent to the beginning of runtime.maptype.
 type maptype struct {
 	size       uintptr
 	ptrdata    uintptr
@@ -118,7 +140,7 @@ type maptype struct {
 	key        unsafe.Pointer
 	elem       unsafe.Pointer
 	bucket     unsafe.Pointer
-	Hasher     func(unsafe.Pointer, uintptr) uintptr
+	hasher     func(unsafe.Pointer, uintptr) uintptr
 	// more fields
 }
 

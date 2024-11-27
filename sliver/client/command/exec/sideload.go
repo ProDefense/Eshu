@@ -28,54 +28,43 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 	"google.golang.org/protobuf/proto"
 )
 
-// SideloadCmd - Sideload a shared library on the remote system.
-func SideloadCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// SideloadCmd - Sideload a shared library on the remote system
+func SideloadCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	if len(args) < 1 {
-		cmd.Usage()
-		return
-	}
+	binPath := ctx.Args.String("filepath")
 
-	binPath := args[0]
-	var binArgs []string
-	if len(args) > 1 {
-		binArgs = args[1:]
-	}
-
-	entryPoint, _ := cmd.Flags().GetString("entry-point")
-	processName, _ := cmd.Flags().GetString("process")
-	keepAlive, _ := cmd.Flags().GetBool("keep-alive")
-	isUnicode, _ := cmd.Flags().GetBool("unicode")
-	pPid, _ := cmd.Flags().GetUint32("ppid")
+	entryPoint := ctx.Flags.String("entry-point")
+	processName := ctx.Flags.String("process")
+	args := strings.Join(ctx.Args.StringList("args"), " ")
 
 	binData, err := os.ReadFile(binPath)
 	if err != nil {
 		con.PrintErrorf("%s", err.Error())
 		return
 	}
-	processArgsStr, _ := cmd.Flags().GetString("process-arguments")
+	processArgsStr := ctx.Flags.String("process-arguments")
 	processArgs := strings.Split(processArgsStr, " ")
 	isDLL := (filepath.Ext(binPath) == ".dll")
 	ctrl := make(chan bool)
-	con.SpinUntil(fmt.Sprintf("Sideloading %s %v...", binPath, binArgs), ctrl)
+	con.SpinUntil(fmt.Sprintf("Sideloading %s ...", binPath), ctrl)
 	sideload, err := con.Rpc.Sideload(context.Background(), &sliverpb.SideloadReq{
-		Request:     con.ActiveTarget.Request(cmd),
-		Args:        binArgs,
+		Request:     con.ActiveTarget.Request(ctx),
+		Args:        args,
 		Data:        binData,
 		EntryPoint:  entryPoint,
 		ProcessName: processName,
-		Kill:        !keepAlive,
+		Kill:        !ctx.Flags.Bool("keep-alive"),
 		IsDLL:       isDLL,
-		IsUnicode:   isUnicode,
-		PPid:        pPid,
+		IsUnicode:   ctx.Flags.Bool("unicode"),
+		PPid:        uint32(ctx.Flags.Uint("ppid")),
 		ProcessArgs: processArgs,
 	})
 	ctrl <- true
@@ -94,28 +83,26 @@ func SideloadCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 				return
 			}
 
-			HandleSideloadResponse(sideload, binPath, hostName, cmd, con)
+			HandleSideloadResponse(sideload, binPath, hostName, ctx, con)
 		})
 		con.PrintAsyncResponse(sideload.Response)
 	} else {
-		HandleSideloadResponse(sideload, binPath, hostName, cmd, con)
+		HandleSideloadResponse(sideload, binPath, hostName, ctx, con)
 	}
 }
 
-func HandleSideloadResponse(sideload *sliverpb.Sideload, binPath string, hostName string, cmd *cobra.Command, con *console.SliverClient) {
-	saveLoot, _ := cmd.Flags().GetBool("loot")
-	lootName, _ := cmd.Flags().GetString("name")
+func HandleSideloadResponse(sideload *sliverpb.Sideload, binPath string, hostName string, ctx *grumble.Context, con *console.SliverConsoleClient) {
+	saveLoot := ctx.Flags.Bool("loot")
+	lootName := ctx.Flags.String("name")
 
 	if sideload.GetResponse().GetErr() != "" {
 		con.PrintErrorf("%s\n", sideload.GetResponse().GetErr())
 		return
 	}
 
-	save, _ := cmd.Flags().GetBool("save")
-
-	PrintExecutionOutput(sideload.GetResult(), save, cmd.Name(), hostName, con)
+	PrintExecutionOutput(sideload.GetResult(), ctx.Flags.Bool("save"), ctx.Command.Name, hostName, con)
 
 	if saveLoot {
-		LootExecute([]byte(sideload.Result), lootName, cmd.Name(), binPath, hostName, con)
+		LootExecute([]byte(sideload.Result), lootName, ctx.Command.Name, binPath, hostName, con)
 	}
 }

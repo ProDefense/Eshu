@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
-	"gvisor.dev/gvisor/pkg/refs"
+	"gvisor.dev/gvisor/pkg/refsvfs2"
 )
 
 // enableLogging indicates whether reference-related events should be logged (with
@@ -43,22 +43,21 @@ type packetBufferRefs struct {
 // InitRefs initializes r with one reference and, if enabled, activates leak
 // checking.
 func (r *packetBufferRefs) InitRefs() {
-
-	r.refCount.RacyStore(1)
-	refs.Register(r)
+	r.refCount.Store(1)
+	refsvfs2.Register(r)
 }
 
-// RefType implements refs.CheckedObject.RefType.
+// RefType implements refsvfs2.CheckedObject.RefType.
 func (r *packetBufferRefs) RefType() string {
 	return fmt.Sprintf("%T", packetBufferobj)[1:]
 }
 
-// LeakMessage implements refs.CheckedObject.LeakMessage.
+// LeakMessage implements refsvfs2.CheckedObject.LeakMessage.
 func (r *packetBufferRefs) LeakMessage() string {
 	return fmt.Sprintf("[%s %p] reference count of %d instead of 0", r.RefType(), r, r.ReadRefs())
 }
 
-// LogRefs implements refs.CheckedObject.LogRefs.
+// LogRefs implements refsvfs2.CheckedObject.LogRefs.
 func (r *packetBufferRefs) LogRefs() bool {
 	return packetBufferenableLogging
 }
@@ -75,7 +74,7 @@ func (r *packetBufferRefs) ReadRefs() int64 {
 func (r *packetBufferRefs) IncRef() {
 	v := r.refCount.Add(1)
 	if packetBufferenableLogging {
-		refs.LogIncRef(r, v)
+		refsvfs2.LogIncRef(r, v)
 	}
 	if v <= 1 {
 		panic(fmt.Sprintf("Incrementing non-positive count %p on %s", r, r.RefType()))
@@ -99,7 +98,7 @@ func (r *packetBufferRefs) TryIncRef() bool {
 
 	v := r.refCount.Add(-speculativeRef + 1)
 	if packetBufferenableLogging {
-		refs.LogTryIncRef(r, v)
+		refsvfs2.LogTryIncRef(r, v)
 	}
 	return true
 }
@@ -119,14 +118,14 @@ func (r *packetBufferRefs) TryIncRef() bool {
 func (r *packetBufferRefs) DecRef(destroy func()) {
 	v := r.refCount.Add(-1)
 	if packetBufferenableLogging {
-		refs.LogDecRef(r, v)
+		refsvfs2.LogDecRef(r, v)
 	}
 	switch {
 	case v < 0:
 		panic(fmt.Sprintf("Decrementing non-positive ref count %p, owned by %s", r, r.RefType()))
 
 	case v == 0:
-		refs.Unregister(r)
+		refsvfs2.Unregister(r)
 
 		if destroy != nil {
 			destroy()
@@ -136,6 +135,6 @@ func (r *packetBufferRefs) DecRef(destroy func()) {
 
 func (r *packetBufferRefs) afterLoad() {
 	if r.ReadRefs() > 0 {
-		refs.Register(r)
+		refsvfs2.Register(r)
 	}
 }

@@ -22,23 +22,21 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
 )
 
-// JobsCmd - Manage server jobs (listeners, etc).
-func JobsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	if pid, _ := cmd.Flags().GetInt32("kill"); pid != -1 {
-		jobKill(uint32(pid), con)
-	} else if all, _ := cmd.Flags().GetBool("kill-all"); all {
+// JobsCmd - Manage server jobs (listeners, etc)
+func JobsCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	if ctx.Flags.Int("kill") != -1 {
+		jobKill(uint32(ctx.Flags.Int("kill")), con)
+	} else if ctx.Flags.Bool("kill-all") {
 		killAllJobs(con)
 	} else {
 		jobs, err := con.Rpc.GetJobs(context.Background(), &commonpb.Empty{})
@@ -59,8 +57,9 @@ func JobsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-// PrintJobs - Prints a list of active jobs.
-func PrintJobs(jobs map[uint32]*clientpb.Job, con *console.SliverClient) {
+// PrintJobs - Prints a list of active jobs
+func PrintJobs(jobs map[uint32]*clientpb.Job, con *console.SliverConsoleClient) {
+
 	tw := table.NewWriter()
 	tw.SetStyle(settings.GetTableStyle(con))
 	tw.AppendHeader(table.Row{
@@ -68,7 +67,7 @@ func PrintJobs(jobs map[uint32]*clientpb.Job, con *console.SliverClient) {
 		"Name",
 		"Protocol",
 		"Port",
-		"Domains",
+		"Stage Profile",
 	})
 
 	var keys []int
@@ -84,35 +83,13 @@ func PrintJobs(jobs map[uint32]*clientpb.Job, con *console.SliverClient) {
 			job.Name,
 			job.Protocol,
 			fmt.Sprintf("%d", job.Port),
-			strings.Join(job.Domains, ","),
+			job.ProfileName,
 		})
 	}
 	con.Printf("%s\n", tw.Render())
 }
 
-// JobsIDCompleter completes jobs IDs with descriptions.
-func JobsIDCompleter(con *console.SliverClient) carapace.Action {
-	callback := func(_ carapace.Context) carapace.Action {
-		jobs, err := con.Rpc.GetJobs(context.Background(), &commonpb.Empty{})
-		if err != nil {
-			return carapace.ActionMessage("No active jobs")
-		}
-
-		results := make([]string, 0)
-
-		for _, job := range jobs.Active {
-			results = append(results, strconv.Itoa(int(job.ID)))
-			desc := fmt.Sprintf("%s  %s %d", job.Protocol, strings.Join(job.Domains, ","), job.Port)
-			results = append(results, desc)
-		}
-
-		return carapace.ActionValuesDescribed(results...).Tag("jobs")
-	}
-
-	return carapace.ActionCallback(callback)
-}
-
-func jobKill(jobID uint32, con *console.SliverClient) {
+func jobKill(jobID uint32, con *console.SliverConsoleClient) {
 	con.PrintInfof("Killing job #%d ...\n", jobID)
 	jobKill, err := con.Rpc.KillJob(context.Background(), &clientpb.KillJobReq{
 		ID: jobID,
@@ -124,7 +101,7 @@ func jobKill(jobID uint32, con *console.SliverClient) {
 	}
 }
 
-func killAllJobs(con *console.SliverClient) {
+func killAllJobs(con *console.SliverConsoleClient) {
 	jobs, err := con.Rpc.GetJobs(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)

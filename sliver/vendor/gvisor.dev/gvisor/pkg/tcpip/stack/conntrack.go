@@ -139,7 +139,7 @@ type conn struct {
 	// Holds a finalizeResult.
 	finalizeResult atomicbitops.Uint32
 
-	mu connRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// sourceManip indicates the source manipulation type.
 	//
 	// +checklocks:mu
@@ -149,7 +149,7 @@ type conn struct {
 	// +checklocks:mu
 	destinationManip manipType
 
-	stateMu stateConnRWMutex `state:"nosave"`
+	stateMu sync.RWMutex `state:"nosave"`
 	// tcb is TCB control block. It is used to keep track of states
 	// of tcp connection.
 	//
@@ -230,7 +230,7 @@ type ConnTrack struct {
 	clock tcpip.Clock
 	rand  *rand.Rand
 
-	mu connTrackRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// mu protects the buckets slice, but not buckets' contents. Only take
 	// the write lock if you are modifying the slice or saving for S/R.
 	//
@@ -240,7 +240,7 @@ type ConnTrack struct {
 
 // +stateify savable
 type bucket struct {
-	mu bucketRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	tuples tupleList
 }
@@ -526,30 +526,32 @@ func (ct *ConnTrack) getConnAndUpdate(pkt *PacketBuffer, skipChecksumValidation 
 		case header.TCPProtocolNumber:
 			_, csumValid, ok := header.TCPValid(
 				header.TCP(pkt.TransportHeader().Slice()),
-				func() uint16 { return pkt.Data().Checksum() },
+				func() uint16 { return pkt.Data().AsRange().Checksum() },
 				uint16(pkt.Data().Size()),
 				tid.srcAddr,
 				tid.dstAddr,
-				pkt.RXChecksumValidated || skipChecksumValidation)
+				pkt.RXTransportChecksumValidated || skipChecksumValidation)
 			if !csumValid || !ok {
 				return nil
 			}
 		case header.UDPProtocolNumber:
 			lengthValid, csumValid := header.UDPValid(
 				header.UDP(pkt.TransportHeader().Slice()),
-				func() uint16 { return pkt.Data().Checksum() },
+				func() uint16 { return pkt.Data().AsRange().Checksum() },
 				uint16(pkt.Data().Size()),
 				pkt.NetworkProtocolNumber,
 				tid.srcAddr,
 				tid.dstAddr,
-				pkt.RXChecksumValidated || skipChecksumValidation)
+				pkt.RXTransportChecksumValidated || skipChecksumValidation)
 			if !lengthValid || !csumValid {
 				return nil
 			}
 		}
 
+		bktID := ct.bucket(tid)
+
 		ct.mu.RLock()
-		bkt := &ct.buckets[ct.bucket(tid)]
+		bkt := &ct.buckets[bktID]
 		ct.mu.RUnlock()
 
 		now := ct.clock.NowMonotonic()
@@ -601,8 +603,10 @@ func (ct *ConnTrack) getConnAndUpdate(pkt *PacketBuffer, skipChecksumValidation 
 }
 
 func (ct *ConnTrack) connForTID(tid tupleID) *tuple {
+	bktID := ct.bucket(tid)
+
 	ct.mu.RLock()
-	bkt := &ct.buckets[ct.bucket(tid)]
+	bkt := &ct.buckets[bktID]
 	ct.mu.RUnlock()
 
 	return bkt.connForTID(tid, ct.clock.NowMonotonic())
@@ -631,7 +635,7 @@ func (ct *ConnTrack) finalize(cn *conn) finalizeResult {
 
 	{
 		tid := cn.reply.tupleID
-		id := ct.bucketWithTableLength(tid, len(buckets))
+		id := ct.bucket(tid)
 
 		bkt := &buckets[id]
 		bkt.mu.Lock()
@@ -659,7 +663,7 @@ func (ct *ConnTrack) finalize(cn *conn) finalizeResult {
 	// better.
 
 	tid := cn.original.tupleID
-	id := ct.bucketWithTableLength(tid, len(buckets))
+	id := ct.bucket(tid)
 	bkt := &buckets[id]
 	bkt.mu.Lock()
 	defer bkt.mu.Unlock()
@@ -695,41 +699,20 @@ func (cn *conn) finalize() bool {
 	}
 }
 
-// If NAT has not been configured for this connection, either mark the
-// connection as configured for "no-op NAT", in the case of DNAT, or, in the
-// case of SNAT, perform source port remapping so that source ports used by
-// locally-generated traffic do not conflict with ports occupied by existing NAT
-// bindings.
-//
-// Note that in the typical case this is also a no-op, because `snatAction`
-// will do nothing if the original tuple is already unique.
-func (cn *conn) maybePerformNoopNAT(pkt *PacketBuffer, hook Hook, r *Route, dnat bool) {
+func (cn *conn) maybePerformNoopNAT(dnat bool) {
 	cn.mu.Lock()
+	defer cn.mu.Unlock()
+
 	var manip *manipType
 	if dnat {
 		manip = &cn.destinationManip
 	} else {
 		manip = &cn.sourceManip
 	}
-	if *manip != manipNotPerformed {
-		cn.mu.Unlock()
-		_ = cn.handlePacket(pkt, hook, r)
-		return
-	}
-	if dnat {
-		*manip = manipPerformedNoop
-		cn.mu.Unlock()
-		_ = cn.handlePacket(pkt, hook, r)
-		return
-	}
-	cn.mu.Unlock()
 
-	// At this point, we know that NAT has not yet been performed on this
-	// connection, and the DNAT case has been handled with a no-op. For SNAT, we
-	// simply perform source port remapping to ensure that source ports for
-	// locally generated traffic do not clash with ports used by existing NAT
-	// bindings.
-	_, _ = snatAction(pkt, hook, r, 0, tcpip.Address{}, true /* changePort */, false /* changeAddress */)
+	if *manip == manipNotPerformed {
+		*manip = manipPerformedNoop
+	}
 }
 
 type portOrIdentRange struct {
@@ -746,7 +729,7 @@ type portOrIdentRange struct {
 //
 // Generally, only the first packet of a connection reaches this method; other
 // packets will be manipulated without needing to modify the connection.
-func (cn *conn) performNAT(pkt *PacketBuffer, hook Hook, r *Route, portsOrIdents portOrIdentRange, natAddress tcpip.Address, dnat, changePort, changeAddress bool) {
+func (cn *conn) performNAT(pkt *PacketBuffer, hook Hook, r *Route, portsOrIdents portOrIdentRange, natAddress tcpip.Address, dnat bool) {
 	lastPortOrIdent := func() uint16 {
 		lastPortOrIdent := uint32(portsOrIdents.start) + portsOrIdents.size - 1
 		if lastPortOrIdent > math.MaxUint16 {
@@ -783,24 +766,12 @@ func (cn *conn) performNAT(pkt *PacketBuffer, hook Hook, r *Route, portsOrIdents
 		return
 	}
 	*manip = manipPerformed
-	if changeAddress {
-		*address = natAddress
-	}
-
-	// Everything below here is port-fiddling.
-	if !changePort {
-		return
-	}
+	*address = natAddress
 
 	// Does the current port/ident fit in the range?
 	if portsOrIdents.start <= *portOrIdent && *portOrIdent <= lastPortOrIdent {
 		// Yes, is the current reply tuple unique?
-		//
-		// Or, does the reply tuple refer to the same connection as the current one that
-		// we are NATing? This would apply, for example, to a self-connected socket,
-		// where the original and reply tuples are identical.
-		other := cn.ct.connForTID(cn.reply.tupleID)
-		if other == nil || other.conn == cn {
+		if other := cn.ct.connForTID(cn.reply.tupleID); other == nil {
 			// Yes! No need to change the port.
 			return
 		}
@@ -966,7 +937,7 @@ func (cn *conn) handlePacket(pkt *PacketBuffer, hook Hook, rt *Route) bool {
 		icmp := header.ICMPv4(pkt.TransportHeader().Slice())
 		// TODO(https://gvisor.dev/issue/6788): Incrementally update ICMP checksum.
 		icmp.SetChecksum(0)
-		icmp.SetChecksum(header.ICMPv4Checksum(icmp, pkt.Data().Checksum()))
+		icmp.SetChecksum(header.ICMPv4Checksum(icmp, pkt.Data().AsRange().Checksum()))
 
 		network := header.IPv4(pkt.NetworkHeader().Slice())
 		if dnat {
@@ -992,7 +963,7 @@ func (cn *conn) handlePacket(pkt *PacketBuffer, hook Hook, rt *Route) bool {
 			Header:      icmp,
 			Src:         srcAddr,
 			Dst:         dstAddr,
-			PayloadCsum: payload.Checksum(),
+			PayloadCsum: payload.AsRange().Checksum(),
 			PayloadLen:  payload.Size(),
 		}))
 
@@ -1007,15 +978,10 @@ func (cn *conn) handlePacket(pkt *PacketBuffer, hook Hook, rt *Route) bool {
 }
 
 // bucket gets the conntrack bucket for a tupleID.
-// +checklocksread:ct.mu
 func (ct *ConnTrack) bucket(id tupleID) int {
-	return ct.bucketWithTableLength(id, len(ct.buckets))
-}
-
-func (ct *ConnTrack) bucketWithTableLength(id tupleID, tableLength int) int {
 	h := jenkins.Sum32(ct.seed)
-	h.Write(id.srcAddr.AsSlice())
-	h.Write(id.dstAddr.AsSlice())
+	h.Write([]byte(id.srcAddr))
+	h.Write([]byte(id.dstAddr))
 	shortBuf := make([]byte, 2)
 	binary.LittleEndian.PutUint16(shortBuf, id.srcPortOrEchoRequestIdent)
 	h.Write([]byte(shortBuf))
@@ -1025,7 +991,9 @@ func (ct *ConnTrack) bucketWithTableLength(id tupleID, tableLength int) int {
 	h.Write([]byte(shortBuf))
 	binary.LittleEndian.PutUint16(shortBuf, uint16(id.netProto))
 	h.Write([]byte(shortBuf))
-	return int(h.Sum32()) % tableLength
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
+	return int(h.Sum32()) % len(ct.buckets)
 }
 
 // reapUnused deletes timed out entries from the conntrack map. The rules for
@@ -1130,9 +1098,9 @@ func (ct *ConnTrack) reapTupleLocked(reapingTuple *tuple, bktID int, bkt *bucket
 		bkt.tuples.Remove(otherTuple)
 	} else {
 		otherTupleBkt := &ct.buckets[otherTupleBktID]
-		otherTupleBkt.mu.NestedLock(bucketLockOthertuple)
+		otherTupleBkt.mu.Lock()
 		otherTupleBkt.tuples.Remove(otherTuple)
-		otherTupleBkt.mu.NestedUnlock(bucketLockOthertuple)
+		otherTupleBkt.mu.Unlock()
 	}
 
 	return true
@@ -1152,14 +1120,14 @@ func (ct *ConnTrack) originalDst(epID TransportEndpointID, netProto tcpip.Networ
 	t := ct.connForTID(tid)
 	if t == nil {
 		// Not a tracked connection.
-		return tcpip.Address{}, 0, &tcpip.ErrNotConnected{}
+		return "", 0, &tcpip.ErrNotConnected{}
 	}
 
 	t.conn.mu.RLock()
 	defer t.conn.mu.RUnlock()
 	if t.conn.destinationManip == manipNotPerformed {
 		// Unmanipulated destination.
-		return tcpip.Address{}, 0, &tcpip.ErrInvalidOptionValue{}
+		return "", 0, &tcpip.ErrInvalidOptionValue{}
 	}
 
 	id := t.conn.original.tupleID

@@ -21,29 +21,27 @@ package privilege
 import (
 	"context"
 
-	"google.golang.org/protobuf/proto"
-
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"google.golang.org/protobuf/proto"
 )
 
 // RunAsCmd - Run a command as another user on the remote system
-func RunAsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func RunAsCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	username, _ := cmd.Flags().GetString("username")
-	password, _ := cmd.Flags().GetString("password")
-	domain, _ := cmd.Flags().GetString("domain")
-	showWindow, _ := cmd.Flags().GetBool("show-window")
-	process, _ := cmd.Flags().GetString("process")
-	arguments, _ := cmd.Flags().GetString("args")
-	netonly, _ := cmd.Flags().GetBool("net-only")
+	username := ctx.Flags.String("username")
+	password := ctx.Flags.String("password")
+	domain := ctx.Flags.String("domain")
+	showWindow := ctx.Flags.Bool("show-window")
+	process := ctx.Flags.String("process")
+	arguments := ctx.Flags.String("args")
+	netonly := ctx.Flags.Bool("net-only")
 
 	if username == "" {
 		con.PrintErrorf("Please specify a username\n")
@@ -56,7 +54,7 @@ func RunAsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 
 	runAs, err := con.Rpc.RunAs(context.Background(), &sliverpb.RunAsReq{
-		Request:     con.ActiveTarget.Request(cmd),
+		Request:     con.ActiveTarget.Request(ctx),
 		Username:    username,
 		ProcessName: process,
 		Args:        arguments,
@@ -84,10 +82,11 @@ func RunAsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	} else {
 		PrintRunAs(runAs, process, arguments, name, con)
 	}
+
 }
 
 // PrintRunAs - Print the result of run as
-func PrintRunAs(runAs *sliverpb.RunAs, process string, args string, name string, con *console.SliverClient) {
+func PrintRunAs(runAs *sliverpb.RunAs, process string, args string, name string, con *console.SliverConsoleClient) {
 	if runAs.Response != nil && runAs.Response.GetErr() != "" {
 		con.PrintErrorf("%s\n", runAs.Response.GetErr())
 		return

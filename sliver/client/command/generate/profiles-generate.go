@@ -19,38 +19,43 @@ package generate
 */
 
 import (
+	"context"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bishopfox/sliver/client/console"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// ProfilesGenerateCmd - Generate an implant binary based on a profile.
-func ProfilesGenerateCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	var name string
-	if len(args) > 0 {
-		name = args[0]
-	}
-
+// ProfilesGenerateCmd - Generate an implant binary based on a profile
+func ProfilesGenerateCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	name := ctx.Args.String("name")
 	if name == "" {
 		con.PrintErrorf("No profile name specified\n")
 		return
 	}
-	save, _ := cmd.Flags().GetString("save")
+	save := ctx.Flags.String("save")
 	if save == "" {
 		save, _ = os.Getwd()
 	}
 	profile := GetImplantProfileByName(name, con)
 	if profile != nil {
-		// If SGN is explicitly disabled, make sure this compilation reflects that despite whatever is set in the profile
-		if SGNDisabled, _ := cmd.Flags().GetBool("disable-sgn"); SGNDisabled {
-			profile.Config.SGNEnabled = !SGNDisabled
-		}
-		_, err := compile(profile.Config, save, con)
+		implantFile, err := compile(profile.Config, ctx.Flags.Bool("disable-sgn"), save, con)
 		if err != nil {
+			return
+		}
+		profile.Config.Name = buildImplantName(implantFile.Name)
+		_, err = con.Rpc.SaveImplantProfile(context.Background(), profile)
+		if err != nil {
+			con.PrintErrorf("could not update implant profile: %v\n", err)
 			return
 		}
 	} else {
 		con.PrintErrorf("No profile with name '%s'", name)
 	}
+}
+
+func buildImplantName(name string) string {
+	return strings.TrimSuffix(name, filepath.Ext(name))
 }

@@ -27,19 +27,19 @@ import (
 	"testing"
 
 	implantCrypto "github.com/bishopfox/sliver/implant/sliver/cryptography"
-	"github.com/bishopfox/sliver/util/minisign"
+	"github.com/bishopfox/sliver/server/cryptography/minisign"
 )
 
 var (
 	sample1 = randomData()
 	sample2 = randomData()
 
-	serverAgeKeyPair      *AgeKeyPair
-	implantPeerAgeKeyPair *AgeKeyPair
+	serverECCKeyPair  *AgeKeyPair
+	implantECCKeyPair *AgeKeyPair
 )
 
 func randomData() []byte {
-	buf := make([]byte, insecureRand.Intn(256)+10)
+	buf := make([]byte, insecureRand.Intn(256))
 	rand.Read(buf)
 	return buf
 }
@@ -51,142 +51,32 @@ func TestMain(m *testing.M) {
 
 func setup() {
 	var err error
-	serverAgeKeyPair, err = RandomAgeKeyPair()
+	serverECCKeyPair, err = RandomAgeKeyPair()
 	if err != nil {
 		panic(err)
 	}
-	implantPeerAgeKeyPair, err = RandomAgeKeyPair()
+	implantECCKeyPair, err = RandomAgeKeyPair()
 	if err != nil {
 		panic(err)
 	}
+	totpSecret, err := TOTPServerSecret()
+	if err != nil {
+		panic(err)
+	}
+
 	implantCrypto.SetSecrets(
-		implantPeerAgeKeyPair.Public,
-		implantPeerAgeKeyPair.Private,
-		MinisignServerSign([]byte(implantPeerAgeKeyPair.Public)),
-		serverAgeKeyPair.Public,
+		implantECCKeyPair.Public,
+		implantECCKeyPair.Private,
+		MinisignServerSign([]byte(implantECCKeyPair.Public)),
+		serverECCKeyPair.Public,
+		totpSecret,
 		MinisignServerPublicKey(),
 	)
 }
 
-func TestAgeEncryptDecrypt(t *testing.T) {
-	encrypted, err := AgeEncrypt(serverAgeKeyPair.Public, sample1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decrypted, err := AgeDecrypt(serverAgeKeyPair.Private, encrypted)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(sample1, decrypted) {
-		t.Fatalf("Sample does not match decrypted data")
-	}
-}
-
-func TestAgeTamperEncryptDecrypt(t *testing.T) {
-	encrypted, err := AgeEncrypt(serverAgeKeyPair.Public, sample1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	encrypted[insecureRand.Intn(len(encrypted))] ^= 0xFF
-	_, err = AgeDecrypt(serverAgeKeyPair.Private, encrypted)
-	if err == nil {
-		t.Fatal(err)
-	}
-}
-
-func TestAgeWrongKeyEncryptDecrypt(t *testing.T) {
-	encrypted, err := AgeEncrypt(serverAgeKeyPair.Public, sample1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyPair, _ := RandomAgeKeyPair()
-	_, err = AgeDecrypt(keyPair.Private, encrypted)
-	if err == nil {
-		t.Fatal(err)
-	}
-}
-
-func TestAgeKeyEx(t *testing.T) {
-	sessionKey := RandomSymmetricKey()
-	plaintext := sessionKey[:]
-	ciphertext, err := implantCrypto.AgeKeyExToServer(plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decrypted, err := AgeKeyExFromImplant(
-		serverAgeKeyPair.Private,
-		implantPeerAgeKeyPair.Private,
-		ciphertext[32:], // Remove prepended public key hash
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(plaintext, decrypted) {
-		t.Fatalf("Session key does not match")
-	}
-}
-
-func TestAgeKeyExTamper(t *testing.T) {
-	sessionKey := RandomSymmetricKey()
-	plaintext := sessionKey[:]
-	allCiphertext, err := implantCrypto.AgeKeyExToServer(plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Tamper with the ciphertext
-	ciphertext := allCiphertext[32:]
-	ciphertext[insecureRand.Intn(len(ciphertext))] ^= 0xFF
-	_, err = AgeKeyExFromImplant(
-		serverAgeKeyPair.Private,
-		implantPeerAgeKeyPair.Private,
-		ciphertext,
-	)
-	if err == nil {
-		t.Fatal(err)
-	}
-
-	// Leave an invalid header with valid ciphertext
-	_, err = AgeKeyExFromImplant(
-		serverAgeKeyPair.Private,
-		implantPeerAgeKeyPair.Private,
-		allCiphertext,
-	)
-	if err == nil {
-		t.Fatal(err)
-	}
-}
-
-func TestAgeKeyExReplay(t *testing.T) {
-	sessionKey := RandomSymmetricKey()
-	plaintext := sessionKey[:]
-	allCiphertext, err := implantCrypto.AgeKeyExToServer(plaintext)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ciphertext := allCiphertext[32:]
-	_, err = AgeKeyExFromImplant(
-		serverAgeKeyPair.Private,
-		implantPeerAgeKeyPair.Private,
-		ciphertext,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = AgeKeyExFromImplant(
-		serverAgeKeyPair.Private,
-		implantPeerAgeKeyPair.Private,
-		ciphertext,
-	)
-	if err == nil {
-		t.Fatal(err)
-	}
-}
-
 // TestEncryptDecrypt - Test AEAD functions
 func TestEncryptDecrypt(t *testing.T) {
-	key := RandomSymmetricKey()
+	key := RandomKey()
 	cipher1, err := Encrypt(key, sample1)
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +89,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Fatalf("Sample does not match decrypted data")
 	}
 
-	key = RandomSymmetricKey()
+	key = RandomKey()
 	cipher2, err := Encrypt(key, sample2)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +105,7 @@ func TestEncryptDecrypt(t *testing.T) {
 
 // TestTamperData - Detect tampered ciphertext
 func TestTamperData(t *testing.T) {
-	key := RandomSymmetricKey()
+	key := RandomKey()
 	cipher1, err := Encrypt(key, sample1)
 	if err != nil {
 		t.Fatal(err)
@@ -232,12 +122,12 @@ func TestTamperData(t *testing.T) {
 
 // TestWrongKey - Attempt to decrypt with wrong key
 func TestWrongKey(t *testing.T) {
-	key := RandomSymmetricKey()
+	key := RandomKey()
 	cipher1, err := Encrypt(key, sample1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key2 := RandomSymmetricKey()
+	key2 := RandomKey()
 	_, err = Decrypt(key2, cipher1)
 	if err == nil {
 		t.Fatalf("Decrypted with wrong key, should have resulted in Fatal")
@@ -246,12 +136,15 @@ func TestWrongKey(t *testing.T) {
 
 // TestCipherContext - Test CipherContext
 func TestCipherContext(t *testing.T) {
-	testKey := RandomSymmetricKey()
+	testKey := RandomKey()
 	cipherCtx1 := &CipherContext{
 		Key:    testKey,
 		replay: &sync.Map{},
 	}
-	cipherCtx2 := implantCrypto.NewCipherContext(testKey)
+	cipherCtx2 := &CipherContext{
+		Key:    testKey,
+		replay: &sync.Map{},
+	}
 
 	sample := randomData()
 
@@ -259,13 +152,13 @@ func TestCipherContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to encrypt sample: %s", err)
 	}
-	_, err = cipherCtx1.Decrypt(ciphertext[minisign.RawSigSize:])
+	_, err = cipherCtx1.Decrypt(ciphertext)
 	if err != ErrReplayAttack {
-		t.Fatal("Failed to detect replay attack (1)")
+		t.Fatal("Failed to detect replay attack")
 	}
-	_, err = cipherCtx1.Decrypt(ciphertext[minisign.RawSigSize:])
+	_, err = cipherCtx1.Decrypt(ciphertext)
 	if err != ErrReplayAttack {
-		t.Fatal("Failed to detect replay attack (2)")
+		t.Fatal("Failed to detect replay attack")
 	}
 
 	plaintext, err := cipherCtx2.Decrypt(ciphertext)
@@ -276,14 +169,34 @@ func TestCipherContext(t *testing.T) {
 		t.Fatalf("Sample does not match decrypted data")
 	}
 	_, err = cipherCtx2.Decrypt(ciphertext)
-	if err != implantCrypto.ErrReplayAttack {
-		t.Fatal("Failed to detect replay attack (3)")
+	if err != ErrReplayAttack {
+		t.Fatal("Failed to detect replay attack")
+	}
+}
+
+func TestECCEncryptDecrypt(t *testing.T) {
+	sample := randomData()
+
+	receiver, err := RandomAgeKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := AgeEncrypt(receiver.Public, sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := AgeDecrypt(receiver.Private, ciphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(plaintext, sample) {
+		t.Fatalf("Sample does not match decrypted data")
 	}
 }
 
 // TestEncryptDecrypt - Test AEAD functions
 func TestImplantEncryptDecrypt(t *testing.T) {
-	key := RandomSymmetricKey()
+	key := RandomKey()
 	cipher1, err := Encrypt(key, sample1)
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +209,7 @@ func TestImplantEncryptDecrypt(t *testing.T) {
 		t.Fatalf("Sample does not match decrypted data")
 	}
 
-	key = RandomSymmetricKey()
+	key = RandomKey()
 	cipher2, err := implantCrypto.Encrypt(key, sample2)
 	if err != nil {
 		t.Fatal(err)
@@ -307,6 +220,42 @@ func TestImplantEncryptDecrypt(t *testing.T) {
 	}
 	if !bytes.Equal(sample2, data2) {
 		t.Fatalf("Sample does not match decrypted data")
+	}
+}
+
+func TestImplantECCEncryptDecrypt(t *testing.T) {
+	sample := randomData()
+	ciphertext, err := implantCrypto.AgeKeyExToServer(sample)
+	if err != nil {
+		t.Fatalf("encrypt to server failed: %s", err)
+	}
+	if len(ciphertext) < 33 {
+		t.Fatalf("ciphertext too short (%d)", len(ciphertext))
+	}
+
+	// Ciphertext has sender public key digest prepended [:32]
+	plaintext, err := AgeKeyExFromImplant(serverECCKeyPair.Private, implantECCKeyPair.Private, ciphertext[32:])
+	if err != nil {
+		t.Fatalf("failed to decrypt implant ciphertext: %s", err)
+	}
+	if !bytes.Equal(plaintext, sample) {
+		t.Fatalf("Sample does not match decrypted data")
+	}
+}
+
+func TestImplantECCEncryptDecryptTamperData(t *testing.T) {
+	sample := randomData()
+	ciphertext, err := implantCrypto.AgeKeyExToServer(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ciphertext) < 34 {
+		t.Fatal("ciphertext too short")
+	}
+	ciphertext[33]++ // Change a byte in the ciphertext
+	_, err = AgeDecrypt(serverECCKeyPair.Private, ciphertext[32:])
+	if err == nil {
+		t.Fatal("ecc decrypted tampered data without error")
 	}
 }
 

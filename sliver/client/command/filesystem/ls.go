@@ -31,27 +31,22 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// LsCmd - List the contents of a remote directory.
-func LsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// LsCmd - List the contents of a remote directory
+func LsCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	var remotePath string
-	if len(args) == 1 {
-		remotePath = args[0]
-	} else {
-		remotePath = "."
-	}
+	remotePath := ctx.Args.String("path")
 
 	ls, err := con.Rpc.Ls(context.Background(), &sliverpb.LsReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 		Path:    remotePath,
 	})
 	if err != nil {
@@ -65,16 +60,16 @@ func LsCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 				con.PrintErrorf("Failed to decode response %s\n", err)
 				return
 			}
-			PrintLs(ls, cmd.Flags(), con)
+			PrintLs(ls, ctx.Flags, con)
 		})
 		con.PrintAsyncResponse(ls.Response)
 	} else {
-		PrintLs(ls, cmd.Flags(), con)
+		PrintLs(ls, ctx.Flags, con)
 	}
 }
 
-// PrintLs - Display an sliverpb.Ls object.
-func PrintLs(ls *sliverpb.Ls, flags *pflag.FlagSet, con *console.SliverClient) {
+// PrintLs - Display an sliverpb.Ls object
+func PrintLs(ls *sliverpb.Ls, flags grumble.FlagMap, con *console.SliverConsoleClient) {
 	if ls.Response != nil && ls.Response.Err != "" {
 		con.PrintErrorf("%s\n", ls.Response.Err)
 		return
@@ -102,9 +97,9 @@ func PrintLs(ls *sliverpb.Ls, flags *pflag.FlagSet, con *console.SliverClient) {
 	table := tabwriter.NewWriter(outputBuf, 0, 2, 2, ' ', 0)
 
 	// Extract the flags
-	reverseSort, _ := flags.GetBool("reverse")
-	sortByTime, _ := flags.GetBool("modified")
-	sortBySize, _ := flags.GetBool("size")
+	reverseSort := flags.Bool("reverse")
+	sortByTime := flags.Bool("modified")
+	sortBySize := flags.Bool("size")
 
 	/*
 		By default, name sorting is case sensitive.  Upper case entries come before

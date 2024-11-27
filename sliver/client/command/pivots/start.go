@@ -24,21 +24,21 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// StartTCPListenerCmd - Start a TCP pivot listener on the remote system.
-func StartTCPListenerCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// StartTCPListenerCmd - Start a TCP pivot listener on the remote system
+func StartTCPListenerCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
-	bind, _ := cmd.Flags().GetString("bind")
-	lport, _ := cmd.Flags().GetUint16("lport")
+	bind := ctx.Flags.String("bind")
+	lport := uint16(ctx.Flags.Int("lport"))
 	listener, err := con.Rpc.PivotStartListener(context.Background(), &sliverpb.PivotStartListenerReq{
 		Type:        sliverpb.PivotType_TCP,
 		BindAddress: fmt.Sprintf("%s:%d", bind, lport),
-		Request:     con.ActiveTarget.Request(cmd),
+		Request:     con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -51,21 +51,18 @@ func StartTCPListenerCmd(cmd *cobra.Command, con *console.SliverClient, args []s
 	con.PrintInfof("Started tcp pivot listener %s with id %d\n", listener.BindAddress, listener.ID)
 }
 
-// StartNamedPipeListenerCmd - Start a TCP pivot listener on the remote system.
-func StartNamedPipeListenerCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// StartNamedPipeListenerCmd - Start a TCP pivot listener on the remote system
+func StartNamedPipeListenerCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
-	allowAll, _ := cmd.Flags().GetBool("allow-all")
-	bind, _ := cmd.Flags().GetString("bind")
-
 	var options []bool
-	options = append(options, allowAll)
+	options = append(options, ctx.Flags.Bool("allow-all"))
 	listener, err := con.Rpc.PivotStartListener(context.Background(), &sliverpb.PivotStartListenerReq{
 		Type:        sliverpb.PivotType_NamedPipe,
-		BindAddress: bind,
-		Request:     con.ActiveTarget.Request(cmd),
+		BindAddress: ctx.Flags.String("bind"),
+		Request:     con.ActiveTarget.Request(ctx),
 		Options:     options,
 	})
 	if err != nil {

@@ -244,9 +244,7 @@ func FromContext(ctx context.Context) *Context {
 // underlying errors happening during cancellation.
 func Cancel(ctx context.Context) error {
 	c := FromContext(ctx)
-	// c.cancel is nil when Cancel is wrongly called with a context returned
-	// by chromedp.NewExecAllocator or chromedp.NewRemoteAllocator.
-	if c == nil || c.cancel == nil {
+	if c == nil {
 		return ErrInvalidContext
 	}
 	graceful := c.first && c.Browser != nil
@@ -351,12 +349,8 @@ func (c *Context) newTarget(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-
-			c.Target.frameMu.Lock()
 			c.Target.frames[tree.Frame.ID] = tree.Frame
 			c.Target.cur = tree.Frame.ID
-			c.Target.frameMu.Unlock()
-
 			c.Target.documentUpdated(ctx)
 		}
 		return nil
@@ -623,9 +617,9 @@ func responseAction(resp **network.Response, actions ...Action) Action {
 
 		// Obtain frameID from the target.
 		c := FromContext(ctx)
-		c.Target.frameMu.RLock()
+		c.Target.frameMu.Lock()
 		frameID = c.Target.cur
-		c.Target.frameMu.RUnlock()
+		c.Target.frameMu.Unlock()
 
 		ListenTarget(lctx, func(ev interface{}) {
 			if loaderID != "" {

@@ -8,7 +8,9 @@ import (
 	"sync"
 )
 
-var colorsEnabled = areANSICodesSupported()
+var (
+	colorsEnabled = areANSICodesSupported()
+)
 
 // DisableColors (forcefully) disables color coding globally.
 func DisableColors() {
@@ -21,7 +23,7 @@ func EnableColors() {
 }
 
 // The logic here is inspired from github.com/fatih/color; the following is
-// the bare minimum logic required to print Colored to the console.
+// the the bare minimum logic required to print Colored to the console.
 // The differences:
 // * This one caches the escape sequences for cases with multiple colors
 // * This one handles cases where the incoming already has colors in the
@@ -121,8 +123,10 @@ func (c Color) Sprintf(format string, a ...interface{}) string {
 // Example: Colors{FgCyan, BgBlack}
 type Colors []Color
 
-// colorsSeqMap caches the escape sequence for a set of colors
-var colorsSeqMap = sync.Map{}
+var (
+	// colorsSeqMap caches the escape sequence for a set of colors
+	colorsSeqMap = sync.Map{}
+)
 
 // EscapeSeq returns the ANSI escape sequence for the colors set.
 func (c Colors) EscapeSeq() string {

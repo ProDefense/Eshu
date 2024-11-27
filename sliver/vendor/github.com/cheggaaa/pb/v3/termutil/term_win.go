@@ -138,8 +138,9 @@ func lockEcho() (err error) {
 	}
 
 	newState := oldState
+	const ENABLE_ECHO_INPUT = 0x0004
 	const ENABLE_LINE_INPUT = 0x0002
-	newState = newState & (^ENABLE_LINE_INPUT)
+	newState = newState & (^(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT))
 	if _, _, e := syscall.Syscall(setConsoleMode.Addr(), 2, uintptr(syscall.Stdout), uintptr(newState), 0); e != 0 {
 		err = fmt.Errorf("Can't set terminal settings: %v", e)
 		return

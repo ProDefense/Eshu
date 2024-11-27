@@ -20,7 +20,6 @@ package cryptography
 
 import (
 	"bytes"
-	"compress/gzip"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -30,22 +29,31 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	// {{if .Config.Debug}}
 	"log"
 	// {{end}}
 
 	"filippo.io/age"
+	"github.com/bishopfox/sliver/implant/sliver/encoders"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
 var (
+	totpOptions = totp.ValidateOpts{
+		Digits:    8,
+		Algorithm: otp.AlgorithmSHA256,
+		Period:    uint(30),
+		Skew:      uint(1),
+	}
+
 	// ErrReplayAttack - Replay attack
 	ErrReplayAttack = errors.New("replay attack detected")
 	// ErrDecryptFailed
 	ErrDecryptFailed = errors.New("decryption failed")
-
-	gzipWriterPools = &sync.Pool{}
 
 	ageMsgPrefix        = []byte("age-encryption.org/v1\n-> X25519 ")
 	agePublicKeyPrefix  = "age1"
@@ -56,15 +64,6 @@ var (
 type AgeKeyPair struct {
 	Public  string
 	Private string
-}
-
-func init() {
-	gzipWriterPools = &sync.Pool{
-		New: func() interface{} {
-			w, _ := gzip.NewWriterLevel(nil, gzip.BestSpeed)
-			return w
-		},
-	}
 }
 
 // AgeEncrypt - Encrypt using Nacl Box
@@ -114,8 +113,8 @@ func AgeDecrypt(recipientPrivateKey string, ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// RandomSymmetricKey - Generate random ID of randomIDSize bytes
-func RandomSymmetricKey() [chacha20poly1305.KeySize]byte {
+// RandomKey - Generate random ID of randomIDSize bytes
+func RandomKey() [chacha20poly1305.KeySize]byte {
 	randBuf := make([]byte, 64)
 	rand.Read(randBuf)
 	return deriveKeyFrom(randBuf)
@@ -136,8 +135,7 @@ func Encrypt(key [chacha20poly1305.KeySize]byte, plaintext []byte) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	compressed := gzipBuf(plaintext)
-	plaintext = bytes.NewBuffer(compressed).Bytes()
+	plaintext = bytes.NewBuffer(encoders.GzipBuf(plaintext)).Bytes()
 	nonce := make([]byte, aead.NonceSize(), aead.NonceSize()+len(plaintext)+aead.Overhead())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
@@ -164,7 +162,7 @@ func Decrypt(key [chacha20poly1305.KeySize]byte, ciphertext []byte) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return gunzipBuf(plaintext), nil
+	return encoders.GunzipBuf(plaintext), nil
 }
 
 // NewCipherContext - Wrapper around creating a cipher context from a key
@@ -182,29 +180,8 @@ type CipherContext struct {
 	replay *sync.Map
 }
 
-const minisignRawSigSize = 74
-
 // Decrypt - Decrypt a message with the contextual key and check for replay attacks
-func (c *CipherContext) Decrypt(msg []byte) ([]byte, error) {
-	if len(msg) < minisignRawSigSize+1 {
-		return nil, ErrDecryptFailed
-	}
-	ciphertext := msg[minisignRawSigSize:]
-	serverPublicKey, err := DecodeMinisignPublicKey(serverMinisignPublicKey)
-	if err != nil {
-		// {{if .Config.Debug}}
-		log.Printf("failed to decode minisign public key: %s", err)
-		// {{end}}
-		return nil, ErrDecryptFailed
-	}
-	validSig := verifyRaw(serverPublicKey, msg, false)
-	if !validSig {
-		// {{if .Config.Debug}}
-		log.Printf("invalid signature on ciphertext")
-		// {{end}}
-		return nil, ErrDecryptFailed
-	}
-
+func (c *CipherContext) Decrypt(ciphertext []byte) ([]byte, error) {
 	plaintext, err := Decrypt(c.Key, ciphertext)
 	if err != nil {
 		return nil, err
@@ -231,6 +208,35 @@ func (c *CipherContext) Encrypt(plaintext []byte) ([]byte, error) {
 		c.replay.Store(b64Digest, true)
 	}
 	return ciphertext, nil
+}
+
+// GetExactOTPCode - Get the OTP code for a specific timestamp
+func GetExactOTPCode(timestamp time.Time) string {
+	code, _ := totp.GenerateCodeCustom(totpSecret, timestamp, totpOptions)
+	// {{if .Config.Debug}}
+	log.Printf("TOTP Code (%s): %s", timestamp, code)
+	// {{end}}
+	return code
+}
+
+// GetOTPCode - Get the current OTP code
+func GetOTPCode() string {
+	now := time.Now().UTC()
+	code, _ := totp.GenerateCodeCustom(totpSecret, now, totpOptions)
+	// {{if .Config.Debug}}
+	log.Printf("TOTP Code: %s", code)
+	// {{end}}
+	return code
+}
+
+// ValidateTOTP - Validate a TOTP code
+func ValidateTOTP(code string) (bool, error) {
+	now := time.Now().UTC()
+	valid, err := totp.ValidateCustom(code, totpSecret, now, totpOptions)
+	if err != nil {
+		return false, err
+	}
+	return valid, nil
 }
 
 // rootOnlyVerifyCertificate - Go doesn't provide a method for only skipping hostname validation so
@@ -270,21 +276,19 @@ func RootOnlyVerifyCertificate(caCertPEM string, rawCerts [][]byte, _ [][]*x509.
 	return nil
 }
 
-// gzipBuf - Gzip a buffer
-func gzipBuf(data []byte) []byte {
-	var buf bytes.Buffer
-	gzipWriter := gzipWriterPools.Get().(*gzip.Writer)
-	gzipWriter.Reset(&buf)
-	gzipWriter.Write(data)
-	gzipWriter.Close()
-	gzipWriterPools.Put(gzipWriter)
-	return buf.Bytes()
-}
-
-// gunzipBuf - Gunzip a buffer
-func gunzipBuf(data []byte) []byte {
-	zip, _ := gzip.NewReader(bytes.NewBuffer(data))
-	var buf bytes.Buffer
-	buf.ReadFrom(zip)
-	return buf.Bytes()
-}
+//// GzipBuf - Gzip a buffer
+//func GzipBuf(data []byte) []byte {
+//	var buf bytes.Buffer
+//	zip := gzip.NewWriter(&buf)
+//	zip.Write(data)
+//	zip.Close()
+//	return buf.Bytes()
+//}
+//
+//// GunzipBuf - Gunzip a buffer
+//func GunzipBuf(data []byte) []byte {
+//	zip, _ := gzip.NewReader(bytes.NewBuffer(data))
+//	var buf bytes.Buffer
+//	buf.ReadFrom(zip)
+//	return buf.Bytes()
+//}

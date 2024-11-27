@@ -47,9 +47,9 @@ var (
 	mtlsLog = log.NamedLogger("transport", "mtls")
 )
 
-// StartMtlsClientListener - Start a mutual TLS listener
-func StartMtlsClientListener(host string, port uint16) (*grpc.Server, net.Listener, error) {
-	mtlsLog.Infof("Starting gRPC/mtls  listener on %s:%d", host, port)
+// StartClientListener - Start a mutual TLS listener
+func StartClientListener(host string, port uint16) (*grpc.Server, net.Listener, error) {
+	mtlsLog.Infof("Starting gRPC  listener on %s:%d", host, port)
 
 	tlsConfig := getOperatorServerTLSConfig("multiplayer")
 
@@ -84,7 +84,7 @@ func StartMtlsClientListener(host string, port uint16) (*grpc.Server, net.Listen
 }
 
 // getOperatorServerTLSConfig - Generate the TLS configuration, we do now allow the end user
-// to specify any TLS parameters, we choose sensible defaults instead
+// to specify any TLS paramters, we choose sensible defaults instead
 func getOperatorServerTLSConfig(host string) *tls.Config {
 	caCertPtr, _, err := certs.GetCertificateAuthority(certs.OperatorCA)
 	if err != nil {
@@ -109,12 +109,17 @@ func getOperatorServerTLSConfig(host string) *tls.Config {
 	}
 
 	tlsConfig := &tls.Config{
-		RootCAs:      caCertPool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    caCertPool,
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS13,
+		RootCAs:                  caCertPool,
+		ClientAuth:               tls.RequireAndVerifyClientCert,
+		ClientCAs:                caCertPool,
+		Certificates:             []tls.Certificate{cert},
+		PreferServerCipherSuites: true,
+		MinVersion:               tls.VersionTLS13,
+	}
+	if certs.TLSKeyLogger != nil {
+		tlsConfig.KeyLogWriter = certs.TLSKeyLogger
 	}
 
+	tlsConfig.BuildNameToCertificate()
 	return tlsConfig
 }

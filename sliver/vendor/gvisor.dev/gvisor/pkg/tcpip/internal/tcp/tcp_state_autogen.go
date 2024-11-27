@@ -3,8 +3,6 @@
 package tcp
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -26,10 +24,10 @@ func (offset *TSOffset) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(0, &offset.milliseconds)
 }
 
-func (offset *TSOffset) afterLoad(context.Context) {}
+func (offset *TSOffset) afterLoad() {}
 
 // +checklocksignore
-func (offset *TSOffset) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (offset *TSOffset) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &offset.milliseconds)
 }
 

@@ -28,6 +28,10 @@ import (
 	"github.com/bishopfox/sliver/server/loot"
 )
 
+// var (
+// 	lootRPCLog = log.NamedLogger("rpc", "loot")
+// )
+
 // LootAdd - Add loot
 func (rpc *Server) LootAdd(ctx context.Context, lootReq *clientpb.Loot) (*clientpb.Loot, error) {
 	loot, err := loot.GetLootStore().Add(lootReq)
@@ -36,14 +40,14 @@ func (rpc *Server) LootAdd(ctx context.Context, lootReq *clientpb.Loot) (*client
 	}
 	core.EventBroker.Publish(core.Event{
 		EventType: consts.LootAddedEvent,
-		Data:      []byte(loot.ID),
+		Data:      []byte(loot.LootID),
 	})
 	return loot, nil
 }
 
 // LootRm - Remove loot
 func (rpc *Server) LootRm(ctx context.Context, lootReq *clientpb.Loot) (*commonpb.Empty, error) {
-	err := loot.GetLootStore().Rm(lootReq.ID)
+	err := loot.GetLootStore().Rm(lootReq.LootID)
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +71,16 @@ func (rpc *Server) LootUpdate(ctx context.Context, lootReq *clientpb.Loot) (*cli
 
 // LootContent - Get a list of all loot of a specific type
 func (rpc *Server) LootContent(ctx context.Context, lootReq *clientpb.Loot) (*clientpb.Loot, error) {
-	return loot.GetLootStore().GetContent(lootReq.ID, true)
+	return loot.GetLootStore().GetContent(lootReq.LootID, true)
 }
 
 // LootAll - Get a list of all loot
 func (rpc *Server) LootAll(ctx context.Context, _ *commonpb.Empty) (*clientpb.AllLoot, error) {
 	return loot.GetLootStore().All(), nil
+}
+
+// LootAllOf - Get a list of all loot of a specific type
+func (rpc *Server) LootAllOf(ctx context.Context, lootReq *clientpb.Loot) (*clientpb.AllLoot, error) {
+	allLoot := loot.GetLootStore().AllOf(lootReq.Type)
+	return allLoot, nil
 }

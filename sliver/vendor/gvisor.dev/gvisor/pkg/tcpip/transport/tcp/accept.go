@@ -119,7 +119,7 @@ func newListenContext(stk *stack.Stack, protocol *protocol, listenEP *endpoint, 
 	}
 
 	for i := range l.nonce {
-		if _, err := io.ReadFull(stk.SecureRNG().Reader, l.nonce[i][:]); err != nil {
+		if _, err := io.ReadFull(stk.SecureRNG(), l.nonce[i][:]); err != nil {
 			panic(err)
 		}
 	}
@@ -146,8 +146,8 @@ func (l *listenContext) cookieHash(id stack.TransportEndpointID, ts uint32, nonc
 	// It never returns an error.
 	l.hasher.Write(payload[:])
 	l.hasher.Write(l.nonce[nonceIndex][:])
-	l.hasher.Write(id.LocalAddress.AsSlice())
-	l.hasher.Write(id.RemoteAddress.AsSlice())
+	l.hasher.Write([]byte(id.LocalAddress))
+	l.hasher.Write([]byte(id.RemoteAddress))
 
 	// Finalize the calculation of the hash and return the first 4 bytes.
 	h := l.hasher.Sum(nil)
@@ -544,39 +544,6 @@ func (e *endpoint) handleListenSegment(ctx *listenContext, s *segment) tcpip.Err
 		iss := s.ackNumber - 1
 		irs := s.sequenceNumber - 1
 
-		// As an edge case when SYN-COOKIES are in use and we receive a
-		// segment that has data and is valid we should check if it
-		// already matches a created endpoint and redirect the segment
-		// rather than try and create a new endpoint. This can happen
-		// where the final ACK for the handshake and other data packets
-		// arrive at the same time and are queued to the listening
-		// endpoint before the listening endpoint has had time to
-		// process the first ACK and create the endpoint that matches
-		// the incoming packet's full 5 tuple.
-		netProtos := []tcpip.NetworkProtocolNumber{s.pkt.NetworkProtocolNumber}
-		// If the local address is an IPv4 Address then also look for IPv6
-		// dual stack endpoints.
-		if s.id.LocalAddress.To4() != (tcpip.Address{}) {
-			netProtos = []tcpip.NetworkProtocolNumber{header.IPv4ProtocolNumber, header.IPv6ProtocolNumber}
-		}
-		for _, netProto := range netProtos {
-			if newEP := e.stack.FindTransportEndpoint(netProto, ProtocolNumber, s.id, s.pkt.NICID); newEP != nil && newEP != e {
-				tcpEP := newEP.(*endpoint)
-				if !tcpEP.EndpointState().connected() {
-					continue
-				}
-				if !tcpEP.enqueueSegment(s) {
-					// Just silently drop the segment as we failed
-					// to queue, we don't want to generate a RST
-					// further below or try and create a new
-					// endpoint etc.
-					return nil
-				}
-				tcpEP.notifyProcessor()
-				return nil
-			}
-		}
-
 		// Since SYN cookies are in use this is potentially an ACK to a
 		// SYN-ACK we sent but don't have a half open connection state
 		// as cookies are being used to protect against a potential SYN
@@ -608,6 +575,39 @@ func (e *endpoint) handleListenSegment(ctx *listenContext, s *segment) tcpip.Err
 			// was opened and closed really quickly and a delayed
 			// ACK was received from the sender.
 			return replyWithReset(e.stack, s, e.sendTOS, e.ipv4TTL, e.ipv6HopLimit)
+		}
+
+		// As an edge case when SYN-COOKIES are in use and we receive a
+		// segment that has data and is valid we should check if it
+		// already matches a created endpoint and redirect the segment
+		// rather than try and create a new endpoint. This can happen
+		// where the final ACK for the handshake and other data packets
+		// arrive at the same time and are queued to the listening
+		// endpoint before the listening endpoint has had time to
+		// process the first ACK and create the endpoint that matches
+		// the incoming packet's full 5 tuple.
+		netProtos := []tcpip.NetworkProtocolNumber{s.pkt.NetworkProtocolNumber}
+		// If the local address is an IPv4 Address then also look for IPv6
+		// dual stack endpoints.
+		if s.id.LocalAddress.To4() != "" {
+			netProtos = []tcpip.NetworkProtocolNumber{header.IPv4ProtocolNumber, header.IPv6ProtocolNumber}
+		}
+		for _, netProto := range netProtos {
+			if newEP := e.stack.FindTransportEndpoint(netProto, ProtocolNumber, s.id, s.pkt.NICID); newEP != nil && newEP != e {
+				tcpEP := newEP.(*endpoint)
+				if !tcpEP.EndpointState().connected() {
+					continue
+				}
+				if !tcpEP.enqueueSegment(s) {
+					// Just silently drop the segment as we failed
+					// to queue, we don't want to generate a RST
+					// further below or try and create a new
+					// endpoint etc.
+					return nil
+				}
+				tcpEP.notifyProcessor()
+				return nil
+			}
 		}
 
 		// Keep hold of acceptMu until the new endpoint is in the accept queue (or

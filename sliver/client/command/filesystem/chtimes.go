@@ -24,26 +24,27 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// ChtimesCmd - Change the access and modified time of a file on the remote file system.
-func ChtimesCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ChtimesCmd - Change the access and modified time of a file on the remote file system
+func ChtimesCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 	// DateTime layout (https://pkg.go.dev/time)
 	layout := "2006-01-02 15:04:05"
-	filePath := args[0]
+	filePath := ctx.Args.String("path")
 
 	if filePath == "" {
 		con.PrintErrorf("Missing parameter: file or directory name\n")
 		return
 	}
 
-	atime := args[1]
+	atime := ctx.Args.String("atime")
 
 	if atime == "" {
 		con.PrintErrorf("Missing parameter: Last accessed time id\n")
@@ -57,7 +58,7 @@ func ChtimesCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 	unixAtime := t_a.Unix()
 
-	mtime := args[2]
+	mtime := ctx.Args.String("mtime")
 
 	if mtime == "" {
 		con.PrintErrorf("Missing parameter: Last modified time id\n")
@@ -70,12 +71,12 @@ func ChtimesCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		return
 	}
 	unixMtime := t_b.Unix()
-
+	
 	chtimes, err := con.Rpc.Chtimes(context.Background(), &sliverpb.ChtimesReq{
-		Request: con.ActiveTarget.Request(cmd),
-		Path:    filePath,
-		ATime:   unixAtime,
-		MTime:   unixMtime,
+		Request:   con.ActiveTarget.Request(ctx),
+		Path:      filePath,
+		ATime:  unixAtime,
+		MTime:  unixMtime,
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -96,8 +97,8 @@ func ChtimesCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-// PrintChtimes - Print the Chtimes response.
-func PrintChtimes(chtimes *sliverpb.Chtimes, con *console.SliverClient) {
+// PrintChtimes - Print the Chtimes response
+func PrintChtimes(chtimes *sliverpb.Chtimes, con *console.SliverConsoleClient) {
 	if chtimes.Response != nil && chtimes.Response.Err != "" {
 		con.PrintErrorf("%s\n", chtimes.Response.Err)
 		return

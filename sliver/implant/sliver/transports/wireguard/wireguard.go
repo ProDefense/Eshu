@@ -20,7 +20,7 @@ package wireguard
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// {{if .Config.IncludeWG}}
+// {{if .Config.WGc2Enabled}}
 
 import (
 	"bufio"
@@ -53,8 +53,8 @@ var (
 	tunnelNet   *netstack.Net
 	tunAddress  string
 
-	wgImplantPrivKey  = `{{.Build.WGImplantPrivKey}}`
-	wgServerPubKey    = `{{.Build.WGServerPubKey}}`
+	wgImplantPrivKey  = `{{.Config.WGImplantPrivKey}}`
+	wgServerPubKey    = `{{.Config.WGServerPubKey}}`
 	wgPeerTunIP       = `{{.Config.WGPeerTunIP}}`
 	wgKeyExchangePort = getWgKeyExchangePort()
 	wgTcpCommsPort    = getWgTcpCommsPort()
@@ -322,4 +322,4 @@ func getWgTcpCommsPort() int {
 	return wgTcpCommsPort
 }
 
-// {{end}} -IncludeWG
+// {{end}} -WGc2Enabled

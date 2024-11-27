@@ -23,38 +23,37 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// ChmodCmd - Change the permissions of a file on the remote file system.
-func ChmodCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ChmodCmd - Change the permissions of a file on the remote file system
+func ChmodCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	filePath := args[0]
+	filePath := ctx.Args.String("path")
 
 	if filePath == "" {
 		con.PrintErrorf("Missing parameter: file or directory name\n")
 		return
 	}
 
-	fileMode := args[1]
+	fileMode := ctx.Args.String("mode")
 
 	if fileMode == "" {
 		con.PrintErrorf("Missing parameter: file permissions (mode)\n")
 		return
 	}
 
-	recursive, _ := cmd.Flags().GetBool("recursive")
-
 	chmod, err := con.Rpc.Chmod(context.Background(), &sliverpb.ChmodReq{
-		Request:   con.ActiveTarget.Request(cmd),
+		Request:   con.ActiveTarget.Request(ctx),
 		Path:      filePath,
 		FileMode:  fileMode,
-		Recursive: recursive,
+		Recursive: ctx.Flags.Bool("recursive"),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -75,8 +74,8 @@ func ChmodCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-// PrintChmod - Print the chmod response.
-func PrintChmod(chmod *sliverpb.Chmod, con *console.SliverClient) {
+// PrintChmod - Print the chmod response
+func PrintChmod(chmod *sliverpb.Chmod, con *console.SliverConsoleClient) {
 	if chmod.Response != nil && chmod.Response.Err != "" {
 		con.PrintErrorf("%s\n", chmod.Response.Err)
 		return

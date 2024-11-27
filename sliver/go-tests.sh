@@ -21,7 +21,7 @@ echo "----------------------------------------------------------------"
 echo "WARNING: Running unit tests on slow systems can take a LONG time"
 echo "         Recommended to only run on 16+ CPU cores and 32Gb+ RAM"
 echo "----------------------------------------------------------------"
-TAGS=osusergo,netgo,go_sqlite
+TAGS=osusergo,netgo,cgosqlite,sqlite_omit_load_extension
 
 ## Client
 
@@ -34,13 +34,6 @@ fi
 
 # client / command / extensions
 if go test -tags=client,$TAGS ./client/command/extensions ; then
-    :
-else
-    exit 1
-fi
-
-# client / credentials
-if go test -tags=client,$TAGS ./client/credentials ; then
     :
 else
     exit 1
@@ -66,46 +59,22 @@ if go test -tags=server,$TAGS ./util/encoders ; then
 else
     exit 1
 fi
-
-# util / minisign
-if go test -tags=server,$TAGS ./util/minisign ; then
+if go test -tags=client,$TAGS ./util/encoders ; then
     :
 else
-    cat ~/.sliver/logs/sliver.log
     exit 1
 fi
 
 ## Implant
 
-# implant / sliver / extension
-if go test ./implant/sliver/extension ; then
-    :
-else
-    exit 1
-fi
-
 # implant / sliver / transports / dnsclient
-if go test ./implant/sliver/transports/dnsclient ; then
+if go test -tags=server,$TAGS ./implant/sliver/transports/dnsclient ; then
     :
 else
     exit 1
 fi
 
 ## Server
-
-# server / assets / traffic encoders
-if go test -timeout 10m -tags=server,$TAGS ./server/assets/traffic-encoders ; then
-    :
-else
-    exit 1
-fi
-
-# server / encoders
-if go test -timeout 10m -tags=server,$TAGS ./server/encoders ; then
-    :
-else
-    exit 1
-fi
 
 # server / website
 if go test -tags=server,$TAGS ./server/website ; then
@@ -133,6 +102,14 @@ fi
 
 # server / cryptography
 if go test -tags=server,$TAGS ./server/cryptography ; then
+    :
+else
+    cat ~/.sliver/logs/sliver.log
+    exit 1
+fi
+
+# server / cryptography / minisign
+if go test -tags=server,$TAGS ./server/cryptography/minisign ; then
     :
 else
     cat ~/.sliver/logs/sliver.log

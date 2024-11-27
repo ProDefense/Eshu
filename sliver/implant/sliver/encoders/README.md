@@ -1,5 +1,7 @@
-# Encoders (Implant)
+Encoders
+========
 
-Mostly copied for `util/encoders` but the implant needs it's own implementation
-of the encoders package so that vendor dependencies works correctly. Unit
-tests for the `server/encoders` package should test interoperability.
+These are the implant-side encoders, almost all of the code is shared with `server/encoders` but there are a few small differences.
+
+The unit tests for this package are in `server/encoders` (which imports this pkg).
+

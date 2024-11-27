@@ -19,9 +19,12 @@ package configs
 */
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	insecureRand "math/rand"
 	"os"
-	"path/filepath"
+	"path"
+	"time"
 
 	"github.com/bishopfox/sliver/server/assets"
 	"github.com/bishopfox/sliver/server/log"
@@ -39,8 +42,8 @@ var (
 // GetServerConfigPath - File path to config.json
 func GetServerConfigPath() string {
 	appDir := assets.GetRootAppDir()
-	serverConfigPath := filepath.Join(appDir, "configs", serverConfigFileName)
-	serverConfigLog.Debugf("Loading config from %s", serverConfigPath)
+	serverConfigPath := path.Join(appDir, "configs", serverConfigFileName)
+	serverConfigLog.Infof("Loading config from %s", serverConfigPath)
 	return serverConfigPath
 }
 
@@ -54,9 +57,8 @@ type LogConfig struct {
 
 // DaemonConfig - Configure daemon mode
 type DaemonConfig struct {
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	Tailscale bool   `json:"tailscale"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 // JobConfig - Restart Jobs on Load
@@ -69,10 +71,9 @@ type JobConfig struct {
 }
 
 type MultiplayerJobConfig struct {
-	Host      string `json:"host"`
-	Port      uint16 `json:"port"`
-	JobID     string `json:"job_id"`
-	Tailscale bool   `json:"tailscale"`
+	Host  string `json:"host"`
+	Port  uint16 `json:"port"`
+	JobID string `json:"job_id"`
 }
 
 // MTLSJobConfig - Per-type job configs
@@ -129,18 +130,15 @@ type ServerConfig struct {
 	DaemonMode   bool              `json:"daemon_mode"`
 	DaemonConfig *DaemonConfig     `json:"daemon"`
 	Logs         *LogConfig        `json:"logs"`
+	Jobs         *JobConfig        `json:"jobs,omitempty"`
 	Watchtower   *WatchTowerConfig `json:"watch_tower"`
 	GoProxy      string            `json:"go_proxy"`
-
-	// 'GOOS/GOARCH' -> CC path
-	CC  map[string]string `json:"cc"`
-	CXX map[string]string `json:"cxx"`
 }
 
 // Save - Save config file to disk
 func (c *ServerConfig) Save() error {
 	configPath := GetServerConfigPath()
-	configDir := filepath.Dir(configPath)
+	configDir := path.Dir(configPath)
 	if _, err := os.Stat(configDir); os.IsNotExist(err) {
 		serverConfigLog.Debugf("Creating config dir %s", configDir)
 		err := os.MkdirAll(configDir, 0700)
@@ -158,6 +156,82 @@ func (c *ServerConfig) Save() error {
 		serverConfigLog.Errorf("Failed to write config %s", err)
 	}
 	return nil
+}
+
+// AddMultiplayerJob - Add Job Configs
+func (c *ServerConfig) AddMultiplayerJob(config *MultiplayerJobConfig) error {
+	if c.Jobs == nil {
+		c.Jobs = &JobConfig{}
+	}
+	config.JobID = getRandomID()
+	c.Jobs.Multiplayer = append(c.Jobs.Multiplayer, config)
+	return c.Save()
+}
+
+// AddMTLSJob - Add Job Configs
+func (c *ServerConfig) AddMTLSJob(config *MTLSJobConfig) error {
+	if c.Jobs == nil {
+		c.Jobs = &JobConfig{}
+	}
+	config.JobID = getRandomID()
+	c.Jobs.MTLS = append(c.Jobs.MTLS, config)
+	return c.Save()
+}
+
+// AddWGJob - Add Job Configs
+func (c *ServerConfig) AddWGJob(config *WGJobConfig) error {
+	if c.Jobs == nil {
+		c.Jobs = &JobConfig{}
+	}
+	config.JobID = getRandomID()
+	c.Jobs.WG = append(c.Jobs.WG, config)
+	return c.Save()
+}
+
+// AddDNSJob - Add a persistent DNS job
+func (c *ServerConfig) AddDNSJob(config *DNSJobConfig) error {
+	if c.Jobs == nil {
+		c.Jobs = &JobConfig{}
+	}
+	config.JobID = getRandomID()
+	c.Jobs.DNS = append(c.Jobs.DNS, config)
+	return c.Save()
+}
+
+// AddHTTPJob - Add a persistent job
+func (c *ServerConfig) AddHTTPJob(config *HTTPJobConfig) error {
+	if c.Jobs == nil {
+		c.Jobs = &JobConfig{}
+	}
+	config.JobID = getRandomID()
+	c.Jobs.HTTP = append(c.Jobs.HTTP, config)
+	return c.Save()
+}
+
+// RemoveJob - Remove Job by ID
+func (c *ServerConfig) RemoveJob(jobID string) {
+	if c.Jobs == nil {
+		return
+	}
+	defer c.Save()
+	for i, j := range c.Jobs.MTLS {
+		if j.JobID == jobID {
+			c.Jobs.MTLS = append(c.Jobs.MTLS[:i], c.Jobs.MTLS[i+1:]...)
+			return
+		}
+	}
+	for i, j := range c.Jobs.DNS {
+		if j.JobID == jobID {
+			c.Jobs.DNS = append(c.Jobs.DNS[:i], c.Jobs.DNS[i+1:]...)
+			return
+		}
+	}
+	for i, j := range c.Jobs.HTTP {
+		if j.JobID == jobID {
+			c.Jobs.HTTP = append(c.Jobs.HTTP[:i], c.Jobs.HTTP[i+1:]...)
+			return
+		}
+	}
 }
 
 // GetServerConfig - Get config value
@@ -206,7 +280,13 @@ func getDefaultServerConfig() *ServerConfig {
 			GRPCUnaryPayloads:  false,
 			GRPCStreamPayloads: false,
 		},
-		CC:  map[string]string{},
-		CXX: map[string]string{},
+		Jobs: &JobConfig{},
 	}
+}
+
+func getRandomID() string {
+	seededRand := insecureRand.New(insecureRand.NewSource(time.Now().UnixNano()))
+	buf := make([]byte, 32)
+	seededRand.Read(buf)
+	return hex.EncodeToString(buf)
 }

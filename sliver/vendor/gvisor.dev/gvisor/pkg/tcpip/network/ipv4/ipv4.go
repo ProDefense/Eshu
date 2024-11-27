@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
-	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -77,7 +76,6 @@ var _ stack.MulticastForwardingNetworkEndpoint = (*endpoint)(nil)
 var _ stack.GroupAddressableEndpoint = (*endpoint)(nil)
 var _ stack.AddressableEndpoint = (*endpoint)(nil)
 var _ stack.NetworkEndpoint = (*endpoint)(nil)
-var _ IGMPEndpoint = (*endpoint)(nil)
 
 type endpoint struct {
 	nic        stack.NetworkInterface
@@ -108,32 +106,6 @@ type endpoint struct {
 
 	// +checklocks:mu
 	igmp igmpState
-}
-
-// SetIGMPVersion implements IGMPEndpoint.
-func (e *endpoint) SetIGMPVersion(v IGMPVersion) IGMPVersion {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.setIGMPVersionLocked(v)
-}
-
-// GetIGMPVersion implements IGMPEndpoint.
-func (e *endpoint) GetIGMPVersion() IGMPVersion {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.getIGMPVersionLocked()
-}
-
-// +checklocks:e.mu
-// +checklocksalias:e.igmp.ep.mu=e.mu
-func (e *endpoint) setIGMPVersionLocked(v IGMPVersion) IGMPVersion {
-	return e.igmp.setVersion(v)
-}
-
-// +checklocksread:e.mu
-// +checklocksalias:e.igmp.ep.mu=e.mu
-func (e *endpoint) getIGMPVersionLocked() IGMPVersion {
-	return e.igmp.getVersion()
 }
 
 // HandleLinkResolutionFailure implements stack.LinkResolvableNetworkEndpoint.
@@ -437,17 +409,6 @@ func (e *endpoint) NetworkProtocolNumber() tcpip.NetworkProtocolNumber {
 	return e.protocol.Number()
 }
 
-// getID returns a random uint16 number (other than zero) to be used as ID in
-// the IPv4 header.
-func (e *endpoint) getID() uint16 {
-	rng := e.protocol.stack.SecureRNG()
-	id := rng.Uint16()
-	for id == 0 {
-		id = rng.Uint16()
-	}
-	return id
-}
-
 func (e *endpoint) addIPHeader(srcAddr, dstAddr tcpip.Address, pkt *stack.PacketBuffer, params stack.NetworkHeaderParams, options header.IPv4OptionsSerializer) tcpip.Error {
 	hdrLen := header.IPv4MinimumSize
 	var optLen int
@@ -466,9 +427,10 @@ func (e *endpoint) addIPHeader(srcAddr, dstAddr tcpip.Address, pkt *stack.Packet
 	// RFC 6864 section 4.3 mandates uniqueness of ID values for non-atomic
 	// datagrams. Since the DF bit is never being set here, all datagrams
 	// are non-atomic and need an ID.
+	id := e.protocol.ids[hashRoute(srcAddr, dstAddr, params.Protocol, e.protocol.hashIV)%buckets].Add(1)
 	ipH.Encode(&header.IPv4Fields{
 		TotalLength: uint16(length),
-		ID:          e.getID(),
+		ID:          uint16(id),
 		TTL:         params.TTL,
 		TOS:         params.TOS,
 		Protocol:    uint8(params.Protocol),
@@ -638,7 +600,7 @@ func (e *endpoint) WriteHeaderIncludedPacket(r *stack.Route, pkt *stack.PacketBu
 		// non-atomic datagrams, so assign an ID to all such datagrams
 		// according to the definition given in RFC 6864 section 4.
 		if ipH.Flags()&header.IPv4FlagDontFragment == 0 || ipH.Flags()&header.IPv4FlagMoreFragments != 0 || ipH.FragmentOffset() > 0 {
-			ipH.SetID(e.getID())
+			ipH.SetID(uint16(e.protocol.ids[hashRoute(r.LocalAddress(), r.RemoteAddress(), 0 /* protocol */, e.protocol.hashIV)%buckets].Add(1)))
 		}
 	}
 
@@ -728,8 +690,6 @@ func (e *endpoint) forwardPacketWithRoute(route *stack.Route, pkt *stack.PacketB
 		// necessary and the bit is also set.
 		_ = e.protocol.returnError(&icmpReasonFragmentationNeeded{}, pkt, false /* deliveredLocally */)
 		return &ip.ErrMessageTooLong{}
-	case *tcpip.ErrNoBufferSpace:
-		return &ip.ErrOutgoingDeviceNoBufferSpace{}
 	default:
 		return &ip.ErrOther{Err: err}
 	}
@@ -737,9 +697,7 @@ func (e *endpoint) forwardPacketWithRoute(route *stack.Route, pkt *stack.PacketB
 
 // forwardUnicastPacket attempts to forward a packet to its final destination.
 func (e *endpoint) forwardUnicastPacket(pkt *stack.PacketBuffer) ip.ForwardingError {
-	hView := pkt.NetworkHeader().View()
-	defer hView.Release()
-	h := header.IPv4(hView.AsSlice())
+	h := header.IPv4(pkt.NetworkHeader().Slice())
 
 	dstAddr := h.DestinationAddress()
 
@@ -783,17 +741,15 @@ func (e *endpoint) forwardUnicastPacket(pkt *stack.PacketBuffer) ip.ForwardingEr
 		return nil
 	}
 
-	r, err := stk.FindRoute(0, tcpip.Address{}, dstAddr, ProtocolNumber, false /* multicastLoop */)
+	r, err := stk.FindRoute(0, "", dstAddr, ProtocolNumber, false /* multicastLoop */)
 	switch err.(type) {
 	case nil:
-	// TODO(https://gvisor.dev/issues/8105): We should not observe ErrHostUnreachable from route
-	// lookups.
-	case *tcpip.ErrHostUnreachable, *tcpip.ErrNetworkUnreachable:
+	case *tcpip.ErrNoRoute, *tcpip.ErrNetworkUnreachable:
 		// We return the original error rather than the result of returning
 		// the ICMP packet because the original error is more relevant to
 		// the caller.
 		_ = e.protocol.returnError(&icmpReasonNetworkUnreachable{}, pkt, false /* deliveredLocally */)
-		return &ip.ErrHostUnreachable{}
+		return &ip.ErrNoRoute{}
 	default:
 		return &ip.ErrOther{Err: err}
 	}
@@ -824,13 +780,11 @@ func (e *endpoint) HandlePacket(pkt *stack.PacketBuffer) {
 		return
 	}
 
-	hView, ok := e.protocol.parseAndValidate(pkt)
+	h, ok := e.protocol.parseAndValidate(pkt)
 	if !ok {
 		stats.MalformedPacketsReceived.Increment()
 		return
 	}
-	h := header.IPv4(hView.AsSlice())
-	defer hView.Release()
 
 	if !e.nic.IsLoopback() {
 		if !e.protocol.options.AllowExternalLoopbackTraffic {
@@ -879,49 +833,18 @@ func (e *endpoint) handleLocalPacket(pkt *stack.PacketBuffer, canSkipRXChecksum 
 
 	pkt = pkt.CloneToInbound()
 	defer pkt.DecRef()
-	pkt.RXChecksumValidated = canSkipRXChecksum
+	pkt.RXTransportChecksumValidated = canSkipRXChecksum
 
-	hView, ok := e.protocol.parseAndValidate(pkt)
+	h, ok := e.protocol.parseAndValidate(pkt)
 	if !ok {
 		stats.MalformedPacketsReceived.Increment()
 		return
 	}
-	h := header.IPv4(hView.AsSlice())
-	defer hView.Release()
 
 	e.handleValidatedPacket(h, pkt, e.nic.Name() /* inNICName */)
 }
 
 func validateAddressesForForwarding(h header.IPv4) ip.ForwardingError {
-	srcAddr := h.SourceAddress()
-
-	// As per RFC 5735 section 3,
-	//
-	//   0.0.0.0/8 - Addresses in this block refer to source hosts on "this"
-	//   network.  Address 0.0.0.0/32 may be used as a source address for this
-	//   host on this network; other addresses within 0.0.0.0/8 may be used to
-	//   refer to specified hosts on this network ([RFC1122], Section 3.2.1.3).
-	//
-	// And RFC 6890 section 2.2.2,
-	//
-	//                +----------------------+----------------------------+
-	//                | Attribute            | Value                      |
-	//                +----------------------+----------------------------+
-	//                | Address Block        | 0.0.0.0/8                  |
-	//                | Name                 | "This host on this network"|
-	//                | RFC                  | [RFC1122], Section 3.2.1.3 |
-	//                | Allocation Date      | September 1981             |
-	//                | Termination Date     | N/A                        |
-	//                | Source               | True                       |
-	//                | Destination          | False                      |
-	//                | Forwardable          | False                      |
-	//                | Global               | False                      |
-	//                | Reserved-by-Protocol | True                       |
-	//                +----------------------+----------------------------+
-	if header.IPv4CurrentNetworkSubnet.Contains(srcAddr) {
-		return &ip.ErrInitializingSourceAddress{}
-	}
-
 	// As per RFC 3927 section 7,
 	//
 	//   A router MUST NOT forward a packet with an IPv4 Link-Local source or
@@ -932,10 +855,10 @@ func validateAddressesForForwarding(h header.IPv4) ip.ForwardingError {
 	//   destination address MUST NOT forward the packet.  This prevents
 	//   forwarding of packets back onto the network segment from which they
 	//   originated, or to any other segment.
-	if header.IsV4LinkLocalUnicastAddress(srcAddr) {
+	if header.IsV4LinkLocalUnicastAddress(h.SourceAddress()) {
 		return &ip.ErrLinkLocalSourceAddress{}
 	}
-	if dstAddr := h.DestinationAddress(); header.IsV4LinkLocalUnicastAddress(dstAddr) || header.IsV4LinkLocalMulticastAddress(dstAddr) {
+	if header.IsV4LinkLocalUnicastAddress(h.DestinationAddress()) || header.IsV4LinkLocalMulticastAddress(h.DestinationAddress()) {
 		return &ip.ErrLinkLocalDestinationAddress{}
 	}
 	return nil
@@ -995,7 +918,7 @@ func (e *endpoint) forwardMulticastPacket(h header.IPv4, pkt *stack.PacketBuffer
 	default:
 		panic(fmt.Sprintf("unexpected GetRouteResultState: %s", result.GetRouteResultState))
 	}
-	return &ip.ErrHostUnreachable{}
+	return &ip.ErrNoRoute{}
 }
 
 func (e *endpoint) updateOptionsForForwarding(pkt *stack.PacketBuffer) ip.ForwardingError {
@@ -1086,7 +1009,7 @@ func (e *endpoint) forwardMulticastPacketForOutgoingInterface(pkt *stack.PacketB
 	if route == nil {
 		// Failed to convert to a stack.Route. This likely means that the outgoing
 		// endpoint no longer exists.
-		return &ip.ErrHostUnreachable{}
+		return &ip.ErrNoRoute{}
 	}
 	defer route.Release()
 
@@ -1173,18 +1096,16 @@ func (e *endpoint) handleValidatedPacket(h header.IPv4, pkt *stack.PacketBuffer,
 // counters.
 func (e *endpoint) handleForwardingError(err ip.ForwardingError) {
 	stats := e.stats.ip
-	switch err := err.(type) {
+	switch err.(type) {
 	case nil:
 		return
-	case *ip.ErrInitializingSourceAddress:
-		stats.Forwarding.InitializingSource.Increment()
 	case *ip.ErrLinkLocalSourceAddress:
 		stats.Forwarding.LinkLocalSource.Increment()
 	case *ip.ErrLinkLocalDestinationAddress:
 		stats.Forwarding.LinkLocalDestination.Increment()
 	case *ip.ErrTTLExceeded:
 		stats.Forwarding.ExhaustedTTL.Increment()
-	case *ip.ErrHostUnreachable:
+	case *ip.ErrNoRoute:
 		stats.Forwarding.Unrouteable.Increment()
 	case *ip.ErrParameterProblem:
 		stats.MalformedPacketsReceived.Increment()
@@ -1196,8 +1117,6 @@ func (e *endpoint) handleForwardingError(err ip.ForwardingError) {
 		stats.Forwarding.UnexpectedMulticastInputInterface.Increment()
 	case *ip.ErrUnknownOutputEndpoint:
 		stats.Forwarding.UnknownOutputEndpoint.Increment()
-	case *ip.ErrOutgoingDeviceNoBufferSpace:
-		stats.Forwarding.OutgoingDeviceNoBufferSpace.Increment()
 	default:
 		panic(fmt.Sprintf("unrecognized forwarding error: %s", err))
 	}
@@ -1362,8 +1281,8 @@ func (e *endpoint) Close() {
 
 // AddAndAcquirePermanentAddress implements stack.AddressableEndpoint.
 func (e *endpoint) AddAndAcquirePermanentAddress(addr tcpip.AddressWithPrefix, properties stack.AddressProperties) (stack.AddressEndpoint, tcpip.Error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 
 	ep, err := e.addressableEndpointState.AddAndAcquireAddress(addr, properties, stack.Permanent)
 	if err == nil {
@@ -1374,7 +1293,7 @@ func (e *endpoint) AddAndAcquirePermanentAddress(addr tcpip.AddressWithPrefix, p
 
 // sendQueuedReports sends queued igmp reports.
 //
-// +checklocks:e.mu
+// +checklocksread:e.mu
 // +checklocksalias:e.igmp.ep.mu=e.mu
 func (e *endpoint) sendQueuedReports() {
 	e.igmp.sendQueuedReports()
@@ -1423,18 +1342,18 @@ func (e *endpoint) AcquireAssignedAddress(localAddr tcpip.Address, allowTemp boo
 }
 
 // AcquireOutgoingPrimaryAddress implements stack.AddressableEndpoint.
-func (e *endpoint) AcquireOutgoingPrimaryAddress(remoteAddr, srcHint tcpip.Address, allowExpired bool) stack.AddressEndpoint {
+func (e *endpoint) AcquireOutgoingPrimaryAddress(remoteAddr tcpip.Address, allowExpired bool) stack.AddressEndpoint {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.acquireOutgoingPrimaryAddressRLocked(remoteAddr, srcHint, allowExpired)
+	return e.acquireOutgoingPrimaryAddressRLocked(remoteAddr, allowExpired)
 }
 
 // acquireOutgoingPrimaryAddressRLocked is like AcquireOutgoingPrimaryAddress
 // but with locking requirements
 //
 // +checklocksread:e.mu
-func (e *endpoint) acquireOutgoingPrimaryAddressRLocked(remoteAddr, srcHint tcpip.Address, allowExpired bool) stack.AddressEndpoint {
-	return e.addressableEndpointState.AcquireOutgoingPrimaryAddress(remoteAddr, srcHint, allowExpired)
+func (e *endpoint) acquireOutgoingPrimaryAddressRLocked(remoteAddr tcpip.Address, allowExpired bool) stack.AddressEndpoint {
+	return e.addressableEndpointState.AcquireOutgoingPrimaryAddress(remoteAddr, allowExpired)
 }
 
 // PrimaryAddresses implements stack.AddressableEndpoint.
@@ -1524,8 +1443,6 @@ type protocol struct {
 
 	ids    []atomicbitops.Uint32
 	hashIV uint32
-	// idTS is the unix timestamp in milliseconds 'ids' was last accessed.
-	idTS atomicbitops.Int64
 
 	fragmentation *fragmentation.Fragmentation
 
@@ -1666,7 +1583,7 @@ func (p *protocol) RemoveMulticastRoute(addresses stack.UnicastSourceAndMulticas
 	}
 
 	if removed := p.multicastRouteTable.RemoveInstalledRoute(addresses); !removed {
-		return &tcpip.ErrHostUnreachable{}
+		return &tcpip.ErrNoRoute{}
 	}
 
 	return nil
@@ -1710,7 +1627,7 @@ func (p *protocol) MulticastRouteLastUsedTime(addresses stack.UnicastSourceAndMu
 	timestamp, found := p.multicastRouteTable.GetLastUsedTimestamp(addresses)
 
 	if !found {
-		return tcpip.MonotonicTime{}, &tcpip.ErrHostUnreachable{}
+		return tcpip.MonotonicTime{}, &tcpip.ErrNoRoute{}
 	}
 
 	return timestamp, nil
@@ -1739,7 +1656,7 @@ func (p *protocol) forwardPendingMulticastPacket(pkt *stack.PacketBuffer, instal
 }
 
 func (p *protocol) isUnicastAddress(addr tcpip.Address) bool {
-	if addr.BitLen() != header.IPv4AddressSizeBits {
+	if len(addr) != header.IPv4AddressSize {
 		return false
 	}
 
@@ -1773,7 +1690,7 @@ func (p *protocol) isSubnetLocalBroadcastAddress(addr tcpip.Address) bool {
 // returns the parsed IP header.
 //
 // Returns true if the IP header was successfully parsed.
-func (p *protocol) parseAndValidate(pkt *stack.PacketBuffer) (*buffer.View, bool) {
+func (p *protocol) parseAndValidate(pkt *stack.PacketBuffer) (header.IPv4, bool) {
 	transProtoNum, hasTransportHdr, ok := p.Parse(pkt)
 	if !ok {
 		return nil, false
@@ -1786,7 +1703,7 @@ func (p *protocol) parseAndValidate(pkt *stack.PacketBuffer) (*buffer.View, bool
 		return nil, false
 	}
 
-	if !pkt.RXChecksumValidated && !h.IsChecksumValid() {
+	if !h.IsChecksumValid() {
 		return nil, false
 	}
 
@@ -1794,7 +1711,7 @@ func (p *protocol) parseAndValidate(pkt *stack.PacketBuffer) (*buffer.View, bool
 		p.parseTransport(pkt, transProtoNum)
 	}
 
-	return pkt.NetworkHeader().View(), true
+	return h, true
 }
 
 func (p *protocol) parseTransport(pkt *stack.PacketBuffer, transProtoNum tcpip.TransportProtocolNumber) {
@@ -1896,9 +1813,8 @@ func packetMustBeFragmented(pkt *stack.PacketBuffer, networkMTU uint32) bool {
 // on a tcpip.Address (a string) without the need to convert it to a byte slice,
 // which would cause an allocation.
 func addressToUint32(addr tcpip.Address) uint32 {
-	addrBytes := addr.As4()
-	_ = addrBytes[3] // bounds check hint to compiler
-	return uint32(addrBytes[0]) | uint32(addrBytes[1])<<8 | uint32(addrBytes[2])<<16 | uint32(addrBytes[3])<<24
+	_ = addr[3] // bounds check hint to compiler
+	return uint32(addr[0]) | uint32(addr[1])<<8 | uint32(addr[2])<<16 | uint32(addr[3])<<24
 }
 
 // hashRoute calculates a hash value for the given source/destination pair using
@@ -2315,7 +2231,7 @@ func (e *endpoint) processIPOptions(pkt *stack.PacketBuffer, opts header.IPv4Opt
 	// really forwarding packets as we may need to get two addresses, for rx and
 	// tx interfaces. We will also have to take usage into account.
 	localAddress := e.MainAddress().Address
-	if localAddress.BitLen() == 0 {
+	if len(localAddress) == 0 {
 		h := header.IPv4(pkt.NetworkHeader().Slice())
 		dstAddr := h.DestinationAddress()
 		if pkt.NetworkPacketInfo.LocalAddressBroadcast || header.IsV4MulticastAddress(dstAddr) {

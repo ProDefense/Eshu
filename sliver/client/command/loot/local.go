@@ -21,38 +21,58 @@ package loot
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
-	"path/filepath"
-
-	"github.com/spf13/cobra"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/desertbit/grumble"
 )
 
 // LootAddLocalCmd - Add a local file to the server as loot
-func LootAddLocalCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	localPath := args[0]
+func LootAddLocalCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	localPath := ctx.Args.String("path")
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
 		con.PrintErrorf("Path '%s' not found\n", localPath)
 		return
 	}
 
-	name, _ := cmd.Flags().GetString("name")
+	name := ctx.Flags.String("name")
 	if name == "" {
 		name = path.Base(localPath)
 	}
 
-	var lootFileType clientpb.FileType
-	if isTextFile(localPath) {
-		lootFileType = clientpb.FileType_TEXT
+	var lootType clientpb.LootType
+	var err error
+	lootTypeStr := ctx.Flags.String("type")
+	if lootTypeStr != "" {
+		lootType, err = lootTypeFromHumanStr(lootTypeStr)
+		if err == ErrInvalidLootType {
+			con.PrintErrorf("Invalid loot type %s\n", lootTypeStr)
+			return
+		}
 	} else {
-		lootFileType = clientpb.FileType_BINARY
+		lootType = clientpb.LootType_LOOT_FILE
 	}
 
-	data, err := os.ReadFile(localPath)
+	lootFileTypeStr := ctx.Flags.String("file-type")
+	var lootFileType clientpb.FileType
+	if lootFileTypeStr != "" {
+		lootFileType, err = lootFileTypeFromHumanStr(lootFileTypeStr)
+		if err != nil {
+			con.PrintErrorf("%s\n", err)
+			return
+		}
+	} else {
+		if isTextFile(localPath) {
+			lootFileType = clientpb.FileType_TEXT
+		} else {
+			lootFileType = clientpb.FileType_BINARY
+		}
+	}
+	data, err := ioutil.ReadFile(localPath)
 	if err != nil {
 		con.PrintErrorf("Failed to read file %s\n", err)
 		return
@@ -60,11 +80,15 @@ func LootAddLocalCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 
 	loot := &clientpb.Loot{
 		Name:     name,
+		Type:     lootType,
 		FileType: lootFileType,
 		File: &commonpb.File{
-			Name: filepath.Base(localPath),
+			Name: path.Base(localPath),
 			Data: data,
 		},
+	}
+	if lootType == clientpb.LootType_LOOT_CREDENTIAL {
+		loot.CredentialType = clientpb.CredentialType_FILE
 	}
 
 	ctrl := make(chan bool)
@@ -76,5 +100,5 @@ func LootAddLocalCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		con.PrintErrorf("%s\n", err)
 	}
 
-	con.PrintInfof("Successfully added loot to server (%s)\n", loot.ID)
+	con.PrintInfof("Successfully added loot to server (%s)\n", loot.LootID)
 }

@@ -15,7 +15,6 @@
 package packet
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -41,11 +40,11 @@ func (ep *endpoint) beforeSave() {
 }
 
 // afterLoad is invoked by stateify.
-func (ep *endpoint) afterLoad(ctx context.Context) {
+func (ep *endpoint) afterLoad() {
 	ep.mu.Lock()
 	defer ep.mu.Unlock()
 
-	ep.stack = stack.RestoreStackFromContext(ctx)
+	ep.stack = stack.StackFromEnv
 	ep.ops.InitHandler(ep, ep.stack, tcpip.GetStackSendBufferLimits, tcpip.GetStackReceiveBufferLimits)
 
 	if err := ep.stack.RegisterPacketEndpoint(ep.boundNIC, ep.boundNetProto, ep); err != nil {

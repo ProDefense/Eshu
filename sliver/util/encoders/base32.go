@@ -20,6 +20,9 @@ import (
 	"encoding/base32"
 )
 
+// Base32EncoderID - EncoderID
+const Base32EncoderID = 65
+
 // Base32 Encoder
 type Base32 struct{}
 
@@ -29,8 +32,8 @@ const base32Alphabet = "ab1c2d3e4f5g6h7j8k9m0npqrtuvwxyz"
 var sliverBase32 = base32.NewEncoding(base32Alphabet).WithPadding(base32.NoPadding)
 
 // Encode - Base32 Encode
-func (e Base32) Encode(data []byte) ([]byte, error) {
-	return []byte(sliverBase32.EncodeToString(data)), nil
+func (e Base32) Encode(data []byte) []byte {
+	return []byte(sliverBase32.EncodeToString(data))
 }
 
 // Decode - Base32 Decode

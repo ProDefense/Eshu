@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -47,7 +48,7 @@ var dataProviderReadConfigFileProxy = []struct {
 }
 
 func TestProvider_ReadConfigFileProxy(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "TestReadConfigFileProxy")
+	tmpDir, err := ioutil.TempDir("", "TestReadConfigFileProxy")
 	defer os.RemoveAll(tmpDir)
 	for _, tt := range dataProviderReadConfigFileProxy {
 		t.Run(tt.content, func(t *testing.T) {
@@ -71,7 +72,7 @@ func TestProvider_ReadConfigFileProxy(t *testing.T) {
 
 func TestProvider_ReadConfigFileProxy_noFile(t *testing.T) {
 	a := assert.New(t)
-	tmpDir, err := os.MkdirTemp("", "TestParseConfigFileProxies")
+	tmpDir, err := ioutil.TempDir("", "TestParseConfigFileProxies")
 	if !a.NoError(err) {
 		return
 	}
@@ -86,7 +87,7 @@ func TestProvider_ReadConfigFileProxy_noFile(t *testing.T) {
 
 func TestProvider_ParseConfigFileProxies_isDir(t *testing.T) {
 	a := assert.New(t)
-	tmpDir, err := os.MkdirTemp("", "TestParseConfigFileProxies")
+	tmpDir, err := ioutil.TempDir("", "TestParseConfigFileProxies")
 	if !a.NoError(err) {
 		return
 	}
@@ -97,7 +98,7 @@ func TestProvider_ParseConfigFileProxies_isDir(t *testing.T) {
 
 func TestProvider_ParseConfigFileProxies_emptyFile(t *testing.T) {
 	a := assert.New(t)
-	tmpDir, err := os.MkdirTemp("", "TestParseConfigFileProxies")
+	tmpDir, err := ioutil.TempDir("", "TestParseConfigFileProxies")
 	if !a.NoError(err) {
 		return
 	}
@@ -117,7 +118,7 @@ func TestProvider_ParseConfigFileProxies_emptyFile(t *testing.T) {
 
 func TestProvider_ParseConfigFileProxies_tooLarge(t *testing.T) {
 	a := assert.New(t)
-	tmpDir, err := os.MkdirTemp("", "TestParseConfigFileProxies")
+	tmpDir, err := ioutil.TempDir("", "TestParseConfigFileProxies")
 	if !a.NoError(err) {
 		return
 	}

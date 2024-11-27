@@ -21,27 +21,26 @@ package sgn
 import (
 	"context"
 	"encoding/hex"
-	"os"
+	"io/ioutil"
 	"path/filepath"
-
-	"github.com/spf13/cobra"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"github.com/desertbit/grumble"
 )
 
 // ShikataGaNaiCmd - Command wrapper for the Shikata Ga Nai shellcode encoder
-func ShikataGaNaiCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	shellcodeFile := args[0]
-	rawShellcode, err := os.ReadFile(shellcodeFile)
+func ShikataGaNaiCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	shellcodeFile := ctx.Args.String("shellcode")
+	rawShellcode, err := ioutil.ReadFile(shellcodeFile)
 	if err != nil {
 		con.PrintErrorf("Failed to read shellcode file: %s", err)
 		return
 	}
 
-	arch, _ := cmd.Flags().GetString("arch")
-	iterations, _ := cmd.Flags().GetInt("iterations")
-	rawBadChars, _ := cmd.Flags().GetString("bad-chars")
+	arch := ctx.Flags.String("arch")
+	iterations := ctx.Flags.Int("iterations")
+	rawBadChars := ctx.Flags.String("bad-chars")
 	badChars, err := hex.DecodeString(rawBadChars)
 	if err != nil {
 		con.PrintErrorf("Failed to decode bad chars: %s", err)
@@ -56,7 +55,7 @@ func ShikataGaNaiCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		Iterations:   uint32(iterations),
 		BadChars:     badChars,
 		Data:         rawShellcode,
-		Request:      con.ActiveTarget.Request(cmd),
+		Request:      con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -67,13 +66,13 @@ func ShikataGaNaiCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		return
 	}
 
-	outputFile, _ := cmd.Flags().GetString("save")
+	outputFile := ctx.Flags.String("save")
 	if outputFile == "" {
 		outputFile = filepath.Base(shellcodeFile)
 		outputFile += ".sgn"
 	}
 
-	err = os.WriteFile(outputFile, shellcodeResp.Data, 0o644)
+	err = ioutil.WriteFile(outputFile, shellcodeResp.Data, 0644)
 	if err != nil {
 		con.PrintErrorf("Failed to write shellcode file: %s", err)
 		return

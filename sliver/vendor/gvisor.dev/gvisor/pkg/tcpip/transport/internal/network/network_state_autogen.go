@@ -3,8 +3,6 @@
 package network
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -60,10 +58,10 @@ func (e *Endpoint) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(17, &e.state)
 }
 
-func (e *Endpoint) afterLoad(context.Context) {}
+func (e *Endpoint) afterLoad() {}
 
 // +checklocksignore
-func (e *Endpoint) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *Endpoint) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &e.ops)
 	stateSourceObject.Load(1, &e.netProto)
 	stateSourceObject.Load(2, &e.transProto)
@@ -104,10 +102,10 @@ func (m *multicastMembership) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &m.multicastAddr)
 }
 
-func (m *multicastMembership) afterLoad(context.Context) {}
+func (m *multicastMembership) afterLoad() {}
 
 // +checklocksignore
-func (m *multicastMembership) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (m *multicastMembership) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &m.nicID)
 	stateSourceObject.Load(1, &m.multicastAddr)
 }

@@ -18,7 +18,6 @@ const (
 	Unknown DeviceType = iota
 	LinuxKernel
 	OpenBSDKernel
-	FreeBSDKernel
 	WindowsKernel
 	Userspace
 )
@@ -30,8 +29,6 @@ func (dt DeviceType) String() string {
 		return "Linux kernel"
 	case OpenBSDKernel:
 		return "OpenBSD kernel"
-	case FreeBSDKernel:
-		return "FreeBSD kernel"
 	case WindowsKernel:
 		return "Windows kernel"
 	case Userspace:

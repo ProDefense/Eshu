@@ -24,11 +24,11 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// WGPortFwdAddCmd - Add a new WireGuard port forward.
-func WGPortFwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// WGPortFwdAddCmd - Add a new WireGuard port forward
+func WGPortFwdAddCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
@@ -38,8 +38,8 @@ func WGPortFwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		return
 	}
 
-	localPort, _ := cmd.Flags().GetInt32("bind")
-	remoteAddr, _ := cmd.Flags().GetString("remote")
+	localPort := ctx.Flags.Int("bind")
+	remoteAddr := ctx.Flags.String("remote")
 	if remoteAddr == "" {
 		con.PrintErrorf("Must specify a remote target host:port")
 		return
@@ -51,10 +51,11 @@ func WGPortFwdAddCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 	}
 
 	portfwdAdd, err := con.Rpc.WGStartPortForward(context.Background(), &sliverpb.WGPortForwardStartReq{
-		LocalPort:     localPort,
+		LocalPort:     int32(localPort),
 		RemoteAddress: remoteAddr,
-		Request:       con.ActiveTarget.Request(cmd),
+		Request:       con.ActiveTarget.Request(ctx),
 	})
+
 	if err != nil {
 		con.PrintErrorf("Error: %v", err)
 		return

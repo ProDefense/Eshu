@@ -34,16 +34,23 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"filippo.io/age"
+	"github.com/bishopfox/sliver/server/cryptography/minisign"
 	"github.com/bishopfox/sliver/server/db"
 	"github.com/bishopfox/sliver/util/encoders"
-	"github.com/bishopfox/sliver/util/minisign"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
 const (
-	serverAgeKeyPairKey      = "server.age"
+	// TOTPDigits - Number of digits in the TOTP
+	TOTPDigits               = 8
+	TOTPPeriod               = uint(30)
+	TOTPSecretKey            = "server.totp"
+	ServerECCKeyPairKey      = "server.ecc"
 	serverMinisignPrivateKey = "server.minisign"
 
 	sha256Size = 32 // size in bytes of a sha256 hash
@@ -74,13 +81,10 @@ func deriveKeyFrom(data []byte) [chacha20poly1305.KeySize]byte {
 	return key
 }
 
-// RandomSymmetricKey - Generate random ID of randomIDSize bytes
-func RandomSymmetricKey() [chacha20poly1305.KeySize]byte {
+// RandomKey - Generate random ID of randomIDSize bytes
+func RandomKey() [chacha20poly1305.KeySize]byte {
 	randBuf := make([]byte, 64)
-	_, err := rand.Read(randBuf)
-	if err != nil {
-		panic(err)
-	}
+	rand.Read(randBuf)
 	return deriveKeyFrom(randBuf)
 }
 
@@ -92,7 +96,7 @@ func KeyFromBytes(data []byte) ([chacha20poly1305.KeySize]byte, error) {
 		// and it seems like a really bad idea to return a zero key in case
 		// the error is not checked by the caller, so instead we return a
 		// random key, which should break everything if the error is not checked.
-		return RandomSymmetricKey(), ErrInvalidKeyLength
+		return RandomKey(), ErrInvalidKeyLength
 	}
 	copy(key[:], data)
 	return key, nil
@@ -167,11 +171,6 @@ func AgeDecrypt(recipientPrivateKey string, ciphertext []byte) ([]byte, error) {
 
 // AgeKeyPairFromImplant - Decrypt the session key from an implant
 func AgeKeyExFromImplant(serverPrivateKey string, implantPrivateKey string, ciphertext []byte) ([]byte, error) {
-	// Check for replay attacks
-	if err := db.CheckKeyExReplay(ciphertext); err != nil {
-		return nil, ErrDecryptFailed
-	}
-
 	// Decrypt the message
 	plaintext, err := AgeDecrypt(serverPrivateKey, ciphertext)
 	if err != nil {
@@ -184,8 +183,9 @@ func AgeKeyExFromImplant(serverPrivateKey string, implantPrivateKey string, ciph
 	}
 
 	// Recompute the HMAC to verify the message
-	privateKeyDigest := sha256.Sum256([]byte(implantPrivateKey))
-	mac := hmac.New(sha256.New, privateKeyDigest[:])
+	privateDigest := sha256.New()
+	privateDigest.Write([]byte(implantPrivateKey))
+	mac := hmac.New(sha256.New, privateDigest.Sum(nil))
 	mac.Write(plaintext[sha256Size:])
 
 	// Constant-time comparison of the HMACs
@@ -202,8 +202,7 @@ func Encrypt(key [chacha20poly1305.KeySize]byte, plaintext []byte) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	compressed, _ := encoders.GzipBuf(plaintext)
-	plaintext = bytes.NewBuffer(compressed).Bytes()
+	plaintext = bytes.NewBuffer(encoders.GzipBuf(plaintext)).Bytes()
 	nonce := make([]byte, aead.NonceSize(), aead.NonceSize()+len(plaintext)+aead.Overhead())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
@@ -275,22 +274,24 @@ func (c *CipherContext) Encrypt(plaintext []byte) ([]byte, error) {
 		b64Digest := base64.RawStdEncoding.EncodeToString(digest[:])
 		c.replay.Store(b64Digest, true)
 	}
-	rawSig := serverSignRawBuf(ciphertext)
-	return append(rawSig, ciphertext...), nil
+	return ciphertext, nil
 }
 
-// serverSignRawBuf - Sign a buffer with the server's minisign private key
-func serverSignRawBuf(buf []byte) []byte {
-	privateKey := MinisignServerPrivateKey()
-	rawSig := minisign.SignRawBuf(*privateKey, buf)
-	return rawSig[:]
+// TOTPOptions - Customized totp validation options
+func TOTPOptions() totp.ValidateOpts {
+	return totp.ValidateOpts{
+		Digits:    TOTPDigits,
+		Algorithm: otp.AlgorithmSHA256,
+		Period:    TOTPPeriod,
+		Skew:      uint(1),
+	}
 }
 
-// AgeServerKeyPair - Get teh server's ECC key pair
-func AgeServerKeyPair() *AgeKeyPair {
-	data, err := db.GetKeyValue(serverAgeKeyPairKey)
+// ECCServerKeyPair - Get teh server's ECC key pair
+func ECCServerKeyPair() *AgeKeyPair {
+	data, err := db.GetKeyValue(ServerECCKeyPairKey)
 	if err == db.ErrRecordNotFound {
-		keyPair, err := generateServerKeyPair()
+		keyPair, err := generateServerECCKeyPair()
 		if err != nil {
 			panic(err)
 		}
@@ -302,9 +303,10 @@ func AgeServerKeyPair() *AgeKeyPair {
 		panic(err)
 	}
 	return keyPair
+
 }
 
-func generateServerKeyPair() (*AgeKeyPair, error) {
+func generateServerECCKeyPair() (*AgeKeyPair, error) {
 	keyPair, err := RandomAgeKeyPair()
 	if err != nil {
 		return nil, err
@@ -313,8 +315,49 @@ func generateServerKeyPair() (*AgeKeyPair, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.SetKeyValue(serverAgeKeyPairKey, string(data))
+	err = db.SetKeyValue(ServerECCKeyPairKey, string(data))
 	return keyPair, err
+}
+
+// TOTPServerSecret - Get the server-wide totp secret value, the goal of the totp
+// is for the implant to prove it was generated by this server. To that end we simply
+// use a server-wide secret and ignore issuers/accounts. In order to bypass this check
+// you'd have to extract the totp secret from a binary generated by the server.
+func TOTPServerSecret() (string, error) {
+	secret, err := db.GetKeyValue(TOTPSecretKey)
+	if err == db.ErrRecordNotFound {
+		secret, err = totpGenerateSecret()
+	}
+	return secret, err
+}
+
+// ValidateTOTP - Validate a TOTP code
+func ValidateTOTP(code string) (bool, error) {
+	secret, err := TOTPServerSecret()
+	if err != nil {
+		return false, err
+	}
+	valid, err := totp.ValidateCustom(code, secret, time.Now().UTC(), TOTPOptions())
+	if err != nil {
+		return false, err
+	}
+	return valid, nil
+}
+
+func totpGenerateSecret() (string, error) {
+	otpSecret, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "foo",
+		AccountName: "bar",
+		Digits:      TOTPDigits,
+		Algorithm:   otp.AlgorithmSHA256,
+		Period:      TOTPPeriod,
+	})
+	if err != nil {
+		return "", err
+	}
+	secret := otpSecret.Secret()
+	err = db.SetKeyValue(TOTPSecretKey, secret)
+	return secret, err
 }
 
 // minisignPrivateKey - This is here so we can marshal to/from JSON

@@ -3,8 +3,6 @@
 package ip
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -23,10 +21,10 @@ func (e *ErrMessageTooLong) StateSave(stateSinkObject state.Sink) {
 	e.beforeSave()
 }
 
-func (e *ErrMessageTooLong) afterLoad(context.Context) {}
+func (e *ErrMessageTooLong) afterLoad() {}
 
 // +checklocksignore
-func (e *ErrMessageTooLong) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *ErrMessageTooLong) StateLoad(stateSourceObject state.Source) {
 }
 
 func (e *ErrNoMulticastPendingQueueBufferSpace) StateTypeName() string {
@@ -44,10 +42,10 @@ func (e *ErrNoMulticastPendingQueueBufferSpace) StateSave(stateSinkObject state.
 	e.beforeSave()
 }
 
-func (e *ErrNoMulticastPendingQueueBufferSpace) afterLoad(context.Context) {}
+func (e *ErrNoMulticastPendingQueueBufferSpace) afterLoad() {}
 
 // +checklocksignore
-func (e *ErrNoMulticastPendingQueueBufferSpace) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *ErrNoMulticastPendingQueueBufferSpace) StateLoad(stateSourceObject state.Source) {
 }
 
 func init() {

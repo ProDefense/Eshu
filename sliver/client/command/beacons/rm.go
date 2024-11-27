@@ -19,21 +19,20 @@ package beacons
 */
 
 import (
-	"github.com/spf13/cobra"
+	"context"
 
 	"github.com/bishopfox/sliver/client/console"
+	"github.com/desertbit/grumble"
 )
 
 // BeaconsRmCmd - Display/interact with beacons
-func BeaconsRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func BeaconsRmCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	beacon, err := SelectBeacon(con)
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
-	grpcCtx, cancel := con.GrpcContext(cmd)
-	defer cancel()
-	_, err = con.Rpc.RmBeacon(grpcCtx, beacon)
+	_, err = con.Rpc.RmBeacon(context.Background(), beacon)
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return

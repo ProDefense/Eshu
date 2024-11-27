@@ -50,61 +50,29 @@ func newDBClient() *gorm.DB {
 		panic(fmt.Sprintf("Unknown DB Dialect: '%s'", dbConfig.Dialect))
 	}
 
-	// We cannot pass all of these into AutoMigrate at once because if one fails, subsequent models will not be created
-	var allDBModels []interface{} = append(make([]interface{}, 0),
-		&models.HttpC2Header{},
-		&models.HttpC2ServerConfig{},
-		&models.HttpC2ImplantConfig{},
-		&models.HttpC2Config{},
-		&models.HttpC2URLParameter{},
-		&models.HttpC2PathSegment{},
+	err := dbClient.AutoMigrate(
 		&models.Beacon{},
 		&models.BeaconTask{},
 		&models.DNSCanary{},
-		&models.Crackstation{},
-		&models.Benchmark{},
-		&models.CrackTask{},
-		&models.CrackCommand{},
-		&models.CrackFile{},
-		&models.CrackFileChunk{},
 		&models.Certificate{},
 		&models.Host{},
-		&models.KeyValue{},
-		&models.WGKeys{},
-		&models.WGPeer{},
-		&models.ResourceID{},
-		&models.HttpC2Cookie{},
 		&models.IOC{},
 		&models.ExtensionData{},
+		&models.ImplantBuild{},
 		&models.ImplantProfile{},
 		&models.ImplantConfig{},
-		&models.ImplantBuild{},
 		&models.ImplantC2{},
-		&models.EncoderAsset{},
-		&models.KeyExHistory{},
+		&models.KeyValue{},
 		&models.CanaryDomain{},
 		&models.Loot{},
-		&models.Credential{},
 		&models.Operator{},
 		&models.Website{},
 		&models.WebContent{},
-		&models.ListenerJob{},
-		&models.HTTPListener{},
-		&models.DNSListener{},
-		&models.WGListener{},
-		&models.MultiplayerListener{},
-		&models.MtlsListener{},
-		&models.DnsDomain{},
-		&models.MonitoringProvider{},
+		&models.WGKeys{},
+		&models.WGPeer{},
 	)
-
-	var err error
-
-	for _, model := range allDBModels {
-		err = dbClient.AutoMigrate(model)
-		if err != nil {
-			clientLog.Error(err)
-		}
+	if err != nil {
+		clientLog.Error(err)
 	}
 
 	// Get generic database object sql.DB to use its functions

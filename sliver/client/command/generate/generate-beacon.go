@@ -7,7 +7,7 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
 var (
@@ -16,35 +16,32 @@ var (
 )
 
 // GenerateBeaconCmd - The main command used to generate implant binaries
-func GenerateBeaconCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	name, config := parseCompileFlags(cmd, con)
+func GenerateBeaconCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	config := parseCompileFlags(ctx, con)
 	if config == nil {
 		return
 	}
 	config.IsBeacon = true
-	err := parseBeaconFlags(cmd, config)
+	err := parseBeaconFlags(ctx, con, config)
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
-	save, _ := cmd.Flags().GetString("save")
+	save := ctx.Flags.String("save")
 	if save == "" {
 		save, _ = os.Getwd()
 	}
-	if external, _ := cmd.Flags().GetBool("external-builder"); !external {
-		compile(config, save, con)
+	if !ctx.Flags.Bool("external-builder") {
+		compile(config, ctx.Flags.Bool("disable-sgn"), save, con)
 	} else {
-		externalBuild(name, config, save, con)
+		externalBuild(config, save, con)
 	}
 }
 
-func parseBeaconFlags(cmd *cobra.Command, config *clientpb.ImplantConfig) error {
-	days, _ := cmd.Flags().GetInt64("days")
-	hours, _ := cmd.Flags().GetInt64("hours")
-	minutes, _ := cmd.Flags().GetInt64("minutes")
-	interval := time.Duration(days) * time.Hour * 24
-	interval += time.Duration(hours) * time.Hour
-	interval += time.Duration(minutes) * time.Minute
+func parseBeaconFlags(ctx *grumble.Context, con *console.SliverConsoleClient, config *clientpb.ImplantConfig) error {
+	interval := time.Duration(ctx.Flags.Int64("days")) * time.Hour * 24
+	interval += time.Duration(ctx.Flags.Int64("hours")) * time.Hour
+	interval += time.Duration(ctx.Flags.Int64("minutes")) * time.Minute
 
 	/*
 		If seconds has not been specified but any of the other time units have, then do not add
@@ -52,18 +49,14 @@ func parseBeaconFlags(cmd *cobra.Command, config *clientpb.ImplantConfig) error 
 
 		If seconds have been specified, then add them regardless.
 	*/
-	if (!cmd.Flags().Changed("seconds") && interval.Seconds() == 0) || (cmd.Flags().Changed("seconds")) {
-		// if (ctx.Flags["seconds"].IsDefault && interval.Seconds() == 0) || (!ctx.Flags["seconds"].IsDefault) {
-		seconds, _ := cmd.Flags().GetInt64("seconds")
-		interval += time.Duration(seconds) * time.Second
+	if (ctx.Flags["seconds"].IsDefault && interval.Seconds() == 0) || (!ctx.Flags["seconds"].IsDefault) {
+		interval += time.Duration(ctx.Flags.Int64("seconds")) * time.Second
 	}
 
 	if interval < minBeaconInterval {
 		return ErrBeaconIntervalTooShort
 	}
-
-	beaconJitter, _ := cmd.Flags().GetInt64("jitter")
 	config.BeaconInterval = int64(interval)
-	config.BeaconJitter = int64(time.Duration(beaconJitter) * time.Second)
+	config.BeaconJitter = int64(time.Duration(ctx.Flags.Int64("jitter")) * time.Second)
 	return nil
 }

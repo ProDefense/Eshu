@@ -20,36 +20,27 @@ package processes
 
 import (
 	"context"
-	"strconv"
-
-	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"google.golang.org/protobuf/proto"
 )
 
 // TerminateCmd - Terminate a process on the remote system
-func TerminateCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func TerminateCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		con.PrintErrorf("No active session or beacon\n")
 		return
 	}
 
-	pid, err := strconv.Atoi(args[0])
-	if err != nil {
-		con.PrintErrorf("Invalid PID: %s (could not convert to int)", args[0])
-		return
-	}
-
-	force, _ := cmd.Flags().GetBool("force")
-
+	pid := ctx.Args.Uint("pid")
 	terminated, err := con.Rpc.Terminate(context.Background(), &sliverpb.TerminateReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 		Pid:     int32(pid),
-		Force:   force,
+		Force:   ctx.Flags.Bool("force"),
 	})
 	if err != nil {
 		con.PrintErrorf("Terminate failed: %s", err)
@@ -72,7 +63,7 @@ func TerminateCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 }
 
 // PrintTerminate - Print the results of the terminate command
-func PrintTerminate(terminated *sliverpb.Terminate, con *console.SliverClient) {
+func PrintTerminate(terminated *sliverpb.Terminate, con *console.SliverConsoleClient) {
 	if terminated.Response != nil && terminated.Response.GetErr() != "" {
 		con.PrintErrorf("%s\n", terminated.Response.GetErr())
 	} else {

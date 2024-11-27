@@ -145,7 +145,7 @@ func (r *reassembler) process(first, last uint16, more bool, proto uint8, pkt *s
 		// options received in the first fragment should be used - and they should
 		// override options from following fragments.
 		if first == 0 {
-			if !r.pkt.IsNil() {
+			if r.pkt != nil {
 				r.pkt.DecRef()
 			}
 			r.pkt = pkt.IncRef()
@@ -167,7 +167,7 @@ func (r *reassembler) process(first, last uint16, more bool, proto uint8, pkt *s
 		return r.holes[i].first < r.holes[j].first
 	})
 
-	resPkt := r.holes[0].pkt.Clone()
+	resPkt := r.holes[0].pkt.IncRef()
 	for i := 1; i < len(r.holes); i++ {
 		stack.MergeFragment(resPkt, r.holes[i].pkt)
 	}

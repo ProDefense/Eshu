@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 )
 
 // ICMPv4 represents an ICMPv4 header stored in a byte array.
@@ -106,22 +105,14 @@ const (
 // ICMP codes for ICMPv4 Destination Unreachable messages as defined in RFC 792,
 // RFC 1122 section 3.2.2.1 and RFC 1812 section 5.2.7.1.
 const (
-	ICMPv4NetUnreachable            ICMPv4Code = 0
-	ICMPv4HostUnreachable           ICMPv4Code = 1
-	ICMPv4ProtoUnreachable          ICMPv4Code = 2
-	ICMPv4PortUnreachable           ICMPv4Code = 3
-	ICMPv4FragmentationNeeded       ICMPv4Code = 4
-	ICMPv4SourceRouteFailed         ICMPv4Code = 5
-	ICMPv4DestinationNetworkUnknown ICMPv4Code = 6
-	ICMPv4DestinationHostUnknown    ICMPv4Code = 7
-	ICMPv4SourceHostIsolated        ICMPv4Code = 8
-	ICMPv4NetProhibited             ICMPv4Code = 9
-	ICMPv4HostProhibited            ICMPv4Code = 10
-	ICMPv4NetUnreachableForTos      ICMPv4Code = 11
-	ICMPv4HostUnreachableForTos     ICMPv4Code = 12
-	ICMPv4AdminProhibited           ICMPv4Code = 13
-	ICMPv4HostPrecedenceViolation   ICMPv4Code = 14
-	ICMPv4PrecedenceCutInEffect     ICMPv4Code = 15
+	ICMPv4NetUnreachable      ICMPv4Code = 0
+	ICMPv4HostUnreachable     ICMPv4Code = 1
+	ICMPv4ProtoUnreachable    ICMPv4Code = 2
+	ICMPv4PortUnreachable     ICMPv4Code = 3
+	ICMPv4FragmentationNeeded ICMPv4Code = 4
+	ICMPv4NetProhibited       ICMPv4Code = 9
+	ICMPv4HostProhibited      ICMPv4Code = 10
+	ICMPv4AdminProhibited     ICMPv4Code = 13
 )
 
 // ICMPv4UnusedCode is a code to use in ICMP messages where no code is needed.
@@ -151,8 +142,8 @@ func (b ICMPv4) Checksum() uint16 {
 }
 
 // SetChecksum sets the ICMP checksum field.
-func (b ICMPv4) SetChecksum(cs uint16) {
-	checksum.Put(b[icmpv4ChecksumOffset:], cs)
+func (b ICMPv4) SetChecksum(checksum uint16) {
+	PutChecksum(b[icmpv4ChecksumOffset:], checksum)
 }
 
 // SourcePort implements Transport.SourcePort.
@@ -221,8 +212,8 @@ func ICMPv4Checksum(h ICMPv4, payloadCsum uint16) uint16 {
 	xsum := payloadCsum
 
 	// h[2:4] is the checksum itself, skip it to avoid checksumming the checksum.
-	xsum = checksum.Checksum(h[:2], xsum)
-	xsum = checksum.Checksum(h[4:], xsum)
+	xsum = Checksum(h[:2], xsum)
+	xsum = Checksum(h[4:], xsum)
 
 	return ^xsum
 }

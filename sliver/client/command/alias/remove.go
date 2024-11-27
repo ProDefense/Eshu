@@ -27,13 +27,12 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/bishopfox/sliver/client/assets"
 	"github.com/bishopfox/sliver/client/console"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
 // AliasesRemoveCmd - Locally load a alias into the Sliver shell.
-func AliasesRemoveCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	name := args[0]
-	// name := ctx.Args.String("name")
+func AliasesRemoveCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	name := ctx.Args.String("name")
 	if name == "" {
 		con.PrintErrorf("Extension name is required\n")
 		return
@@ -53,8 +52,8 @@ func AliasesRemoveCmd(cmd *cobra.Command, con *console.SliverClient, args []stri
 	}
 }
 
-// RemoveAliasByCommandName - Remove an alias by command name.
-func RemoveAliasByCommandName(commandName string, con *console.SliverClient) error {
+// RemoveAliasByCommandName - Remove an alias by command name
+func RemoveAliasByCommandName(commandName string, con *console.SliverConsoleClient) error {
 	if commandName == "" {
 		return errors.New("command name is required")
 	}
@@ -62,7 +61,7 @@ func RemoveAliasByCommandName(commandName string, con *console.SliverClient) err
 		return errors.New("alias not loaded")
 	}
 	delete(loadedAliases, commandName)
-	// con.App.Commands().Remove(commandName)
+	con.App.Commands().Remove(commandName)
 	extPath := filepath.Join(assets.GetAliasesDir(), filepath.Base(commandName))
 	if _, err := os.Stat(extPath); os.IsNotExist(err) {
 		return nil

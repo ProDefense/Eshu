@@ -30,27 +30,27 @@ import (
 	"github.com/bishopfox/sliver/client/core"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"golang.org/x/term"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// ExecuteShellcodeCmd - Execute shellcode in-memory.
-func ExecuteShellcodeCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ExecuteShellcodeCmd - Execute shellcode in-memory
+func ExecuteShellcodeCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	rwxPages, _ := cmd.Flags().GetBool("rwx-pages")
-	interactive, _ := cmd.Flags().GetBool("interactive")
+	rwxPages := ctx.Flags.Bool("rwx-pages")
+	interactive := ctx.Flags.Bool("interactive")
 	if interactive && beacon != nil {
 		con.PrintErrorf("Interactive shellcode can only be executed in a session\n")
 		return
 	}
-
-	pid, _ := cmd.Flags().GetUint32("pid")
-	shellcodePath := args[0]
+	pid := ctx.Flags.Uint("pid")
+	shellcodePath := ctx.Args.String("filepath")
 	shellcodeBin, err := os.ReadFile(shellcodePath)
 	if err != nil {
 		con.PrintErrorf("%s\n", err.Error())
@@ -60,23 +60,23 @@ func ExecuteShellcodeCmd(cmd *cobra.Command, con *console.SliverClient, args []s
 		con.PrintErrorf("Cannot use both `--pid` and `--interactive`\n")
 		return
 	}
-	shikataGaNai, _ := cmd.Flags().GetBool("shikata-ga-nai")
+	shikataGaNai := ctx.Flags.Bool("shikata-ga-nai")
 	if shikataGaNai {
 		if !rwxPages {
 			con.PrintErrorf("Cannot use shikata ga nai without RWX pages enabled\n")
 			return
 		}
-		arch, _ := cmd.Flags().GetString("architecture")
+		arch := ctx.Flags.String("architecture")
 		if arch != "386" && arch != "amd64" {
 			con.PrintErrorf("Invalid shikata ga nai architecture (must be 386 or amd64)\n")
 			return
 		}
-		iter, _ := cmd.Flags().GetUint32("iterations")
+		iter := ctx.Flags.Int("iterations")
 		con.PrintInfof("Encoding shellcode ...\n")
 		resp, err := con.Rpc.ShellcodeEncoder(context.Background(), &clientpb.ShellcodeEncodeReq{
 			Encoder:      clientpb.ShellcodeEncoder_SHIKATA_GA_NAI,
 			Architecture: arch,
-			Iterations:   iter,
+			Iterations:   uint32(iter),
 			BadChars:     []byte{},
 			Data:         shellcodeBin,
 		})
@@ -89,10 +89,8 @@ func ExecuteShellcodeCmd(cmd *cobra.Command, con *console.SliverClient, args []s
 		con.PrintInfof("Shellcode encoded in %d iterations (%d bytes -> %d bytes)\n", iter, oldSize, len(shellcodeBin))
 	}
 
-	process, _ := cmd.Flags().GetString("process")
-
 	if interactive {
-		executeInteractive(cmd, process, shellcodeBin, rwxPages, con)
+		executeInteractive(ctx, ctx.Flags.String("process"), shellcodeBin, rwxPages, con)
 		return
 	}
 	ctrl := make(chan bool)
@@ -101,8 +99,8 @@ func ExecuteShellcodeCmd(cmd *cobra.Command, con *console.SliverClient, args []s
 	shellcodeTask, err := con.Rpc.Task(context.Background(), &sliverpb.TaskReq{
 		Data:     shellcodeBin,
 		RWXPages: rwxPages,
-		Pid:      pid,
-		Request:  con.ActiveTarget.Request(cmd),
+		Pid:      uint32(pid),
+		Request:  con.ActiveTarget.Request(ctx),
 	})
 	ctrl <- true
 	<-ctrl
@@ -126,8 +124,8 @@ func ExecuteShellcodeCmd(cmd *cobra.Command, con *console.SliverClient, args []s
 	}
 }
 
-// PrintExecuteShellcode - Display result of shellcode execution.
-func PrintExecuteShellcode(task *sliverpb.Task, con *console.SliverClient) {
+// PrintExecuteShellcode - Display result of shellcode execution
+func PrintExecuteShellcode(task *sliverpb.Task, con *console.SliverConsoleClient) {
 	if task.Response.GetErr() != "" {
 		con.PrintErrorf("%s\n", task.Response.GetErr())
 	} else {
@@ -135,7 +133,7 @@ func PrintExecuteShellcode(task *sliverpb.Task, con *console.SliverClient) {
 	}
 }
 
-func executeInteractive(cmd *cobra.Command, hostProc string, shellcode []byte, rwxPages bool, con *console.SliverClient) {
+func executeInteractive(ctx *grumble.Context, hostProc string, shellcode []byte, rwxPages bool, con *console.SliverConsoleClient) {
 	// Check active session
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
@@ -150,6 +148,7 @@ func executeInteractive(cmd *cobra.Command, hostProc string, shellcode []byte, r
 	rpcTunnel, err := con.Rpc.CreateTunnel(context.Background(), &sliverpb.Tunnel{
 		SessionID: session.ID,
 	})
+
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
@@ -158,11 +157,12 @@ func executeInteractive(cmd *cobra.Command, hostProc string, shellcode []byte, r
 	tunnel := core.GetTunnels().Start(rpcTunnel.GetTunnelID(), rpcTunnel.GetSessionID())
 
 	shell, err := con.Rpc.Shell(context.Background(), &sliverpb.ShellReq{
-		Request:   con.ActiveTarget.Request(cmd),
+		Request:   con.ActiveTarget.Request(ctx),
 		Path:      hostProc,
 		EnablePTY: !noPty,
 		TunnelID:  tunnel.ID,
 	})
+
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
@@ -174,7 +174,7 @@ func executeInteractive(cmd *cobra.Command, hostProc string, shellcode []byte, r
 	msg := fmt.Sprintf("Sending shellcode to %s ...", session.GetName())
 	con.SpinUntil(msg, ctrl)
 	_, err = con.Rpc.Task(context.Background(), &sliverpb.TaskReq{
-		Request:  con.ActiveTarget.Request(cmd),
+		Request:  con.ActiveTarget.Request(ctx),
 		Pid:      pid,
 		Data:     shellcode,
 		RWXPages: rwxPages,

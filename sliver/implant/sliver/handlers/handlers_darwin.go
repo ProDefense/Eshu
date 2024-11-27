@@ -21,9 +21,8 @@ package handlers
 import (
 	"os"
 	"os/user"
-	"strconv"
 	"syscall"
-
+	"strconv"
 	"github.com/bishopfox/sliver/implant/sliver/extension"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	pb "github.com/bishopfox/sliver/protobuf/sliverpb"
@@ -43,14 +42,12 @@ var (
 		pb.MsgRmReq:        rmHandler,
 		pb.MsgMkdirReq:     mkdirHandler,
 		pb.MsgMvReq:        mvHandler,
-		pb.MsgCpReq:        cpHandler,
 		pb.MsgIfconfigReq:  ifconfigHandler,
 		pb.MsgExecuteReq:   executeHandler,
 		pb.MsgEnvReq:       getEnvHandler,
 		pb.MsgSetEnvReq:    setEnvHandler,
 		pb.MsgUnsetEnvReq:  unsetEnvHandler,
 		pb.MsgChtimesReq:   chtimesHandler,
-		pb.MsgGrepReq:      grepHandler,
 
 		pb.MsgScreenshotReq: screenshotHandler,
 		pb.MsgNetstatReq:    netstatHandler,
@@ -65,12 +62,7 @@ var (
 		pb.MsgCallExtensionReq:     callExtensionHandler,
 		pb.MsgListExtensionsReq:    listExtensionsHandler,
 
-		// Wasm Extensions - Note that execution can be done via a tunnel handler
-		pb.MsgRegisterWasmExtensionReq:   registerWasmExtensionHandler,
-		pb.MsgDeregisterWasmExtensionReq: deregisterWasmExtensionHandler,
-		pb.MsgListWasmExtensionsReq:      listWasmExtensionsHandler,
-
-		// {{if .Config.IncludeWG}}
+		// {{if .Config.WGc2Enabled}}
 		// Wireguard specific
 		pb.MsgWGStartPortFwdReq:   wgStartPortfwdHandler,
 		pb.MsgWGStopPortFwdReq:    wgStopPortfwdHandler,
@@ -154,7 +146,7 @@ func listExtensionsHandler(data []byte, resp RPCResponse) {
 	resp(data, err)
 }
 
-func getUid(fileInfo os.FileInfo) string {
+func getUid(fileInfo os.FileInfo) (string) {
 	uid := int32(fileInfo.Sys().(*syscall.Stat_t).Uid)
 	uid_str := strconv.FormatUint(uint64(uid), 10)
 	usr, err := user.LookupId(uid_str)
@@ -164,7 +156,7 @@ func getUid(fileInfo os.FileInfo) string {
 	return usr.Name
 }
 
-func getGid(fileInfo os.FileInfo) string {
+func getGid(fileInfo os.FileInfo) (string) {
 	gid := int32(fileInfo.Sys().(*syscall.Stat_t).Gid)
 	gid_str := strconv.FormatUint(uint64(gid), 10)
 	grp, err := user.LookupGroupId(gid_str)

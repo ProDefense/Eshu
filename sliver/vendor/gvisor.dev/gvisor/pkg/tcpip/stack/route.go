@@ -17,6 +17,7 @@ package stack
 import (
 	"fmt"
 
+	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 )
@@ -33,7 +34,7 @@ type Route struct {
 	localAddressNIC *nic
 
 	// mu protects annotated fields below.
-	mu routeRWMutex
+	mu sync.RWMutex
 
 	// localAddressEndpoint is the local address this route is associated with.
 	// +checklocks:mu
@@ -49,11 +50,6 @@ type Route struct {
 	// linkRes is set if link address resolution is enabled for this protocol on
 	// the route's NIC.
 	linkRes *linkResolver
-
-	// neighborEntry is the cached result of fetching a neighbor entry from the
-	// neighbor cache.
-	// +checklocks:mu
-	neighborEntry *neighborEntry
 }
 
 // +stateify savable
@@ -101,11 +97,6 @@ func (r *Route) Loop() PacketLooping {
 	return r.routeInfo.Loop
 }
 
-// OutgoingNIC returns the route's outgoing NIC.
-func (r *Route) OutgoingNIC() tcpip.NICID {
-	return r.outgoingNIC.id
-}
-
 // RouteInfo contains all of Route's exported fields.
 //
 // +stateify savable
@@ -141,7 +132,7 @@ func (r *Route) fieldsLocked() RouteInfo {
 //
 // Returns an empty route if validation fails.
 func constructAndValidateRoute(netProto tcpip.NetworkProtocolNumber, addressEndpoint AssignableAddressEndpoint, localAddressNIC, outgoingNIC *nic, gateway, localAddr, remoteAddr tcpip.Address, handleLocal, multicastLoop bool) *Route {
-	if localAddr.BitLen() == 0 {
+	if len(localAddr) == 0 {
 		localAddr = addressEndpoint.AddressWithPrefix().Address
 	}
 
@@ -151,7 +142,7 @@ func constructAndValidateRoute(netProto tcpip.NetworkProtocolNumber, addressEndp
 	}
 
 	// If no remote address is provided, use the local address.
-	if remoteAddr.BitLen() == 0 {
+	if len(remoteAddr) == 0 {
 		remoteAddr = localAddr
 	}
 
@@ -177,7 +168,7 @@ func makeRoute(netProto tcpip.NetworkProtocolNumber, gateway, localAddr, remoteA
 		panic(fmt.Sprintf("cannot create a route with NICs from different stacks"))
 	}
 
-	if localAddr.BitLen() == 0 {
+	if len(localAddr) == 0 {
 		localAddr = localAddressEndpoint.AddressWithPrefix().Address
 	}
 
@@ -187,7 +178,7 @@ func makeRoute(netProto tcpip.NetworkProtocolNumber, gateway, localAddr, remoteA
 	// link endpoint level. We can remove this check once loopback interfaces
 	// loop back packets at the network layer.
 	if !outgoingNIC.IsLoopback() {
-		if handleLocal && localAddr != (tcpip.Address{}) && remoteAddr == localAddr {
+		if handleLocal && localAddr != "" && remoteAddr == localAddr {
 			loop = PacketLoop
 		} else if multicastLoop && (header.IsV4MulticastAddress(remoteAddr) || header.IsV6MulticastAddress(remoteAddr)) {
 			loop |= PacketLoop
@@ -211,7 +202,7 @@ func makeRoute(netProto tcpip.NetworkProtocolNumber, gateway, localAddr, remoteA
 		}
 	}
 
-	if gateway.BitLen() > 0 {
+	if len(gateway) > 0 {
 		r.routeInfo.NextHop = gateway
 		return r
 	}
@@ -332,8 +323,8 @@ func (r *Route) HasSaveRestoreCapability() bool {
 	return r.outgoingNIC.NetworkLinkEndpoint.Capabilities()&CapabilitySaveRestore != 0
 }
 
-// HasDisconnectOkCapability returns true if the route supports disconnecting.
-func (r *Route) HasDisconnectOkCapability() bool {
+// HasDisconncetOkCapability returns true if the route supports disconnecting.
+func (r *Route) HasDisconncetOkCapability() bool {
 	return r.outgoingNIC.NetworkLinkEndpoint.Capabilities()&CapabilityDisconnectOk != 0
 }
 
@@ -399,47 +390,24 @@ func (r *Route) resolvedFields(afterResolve func(ResolvedFieldsResult)) (RouteIn
 		linkAddressResolutionRequestLocalAddr = r.LocalAddress()
 	}
 
-	nEntry := r.getCachedNeighborEntry()
-	if nEntry != nil {
-		if addr, ok := nEntry.getRemoteLinkAddress(); ok {
-			fields.RemoteLinkAddress = addr
-			if afterResolve != nil {
-				afterResolve(ResolvedFieldsResult{RouteInfo: fields, Err: nil})
-			}
-			return fields, nil, nil
-		}
-	}
 	afterResolveFields := fields
-	entry, ch, err := r.linkRes.neigh.entry(r.nextHop(), linkAddressResolutionRequestLocalAddr, func(lrr LinkResolutionResult) {
+	linkAddr, ch, err := r.linkRes.getNeighborLinkAddress(r.nextHop(), linkAddressResolutionRequestLocalAddr, func(r LinkResolutionResult) {
 		if afterResolve != nil {
-			if lrr.Err == nil {
-				afterResolveFields.RemoteLinkAddress = lrr.LinkAddress
+			if r.Err == nil {
+				afterResolveFields.RemoteLinkAddress = r.LinkAddress
 			}
 
-			afterResolve(ResolvedFieldsResult{RouteInfo: afterResolveFields, Err: lrr.Err})
+			afterResolve(ResolvedFieldsResult{RouteInfo: afterResolveFields, Err: r.Err})
 		}
 	})
 	if err == nil {
-		fields.RemoteLinkAddress, _ = entry.getRemoteLinkAddress()
+		fields.RemoteLinkAddress = linkAddr
 	}
-	r.setCachedNeighborEntry(entry)
 	return fields, ch, err
 }
 
-func (r *Route) getCachedNeighborEntry() *neighborEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.neighborEntry
-}
-
-func (r *Route) setCachedNeighborEntry(entry *neighborEntry) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.neighborEntry = entry
-}
-
 func (r *Route) nextHop() tcpip.Address {
-	if r.NextHop().BitLen() == 0 {
+	if len(r.NextHop()) == 0 {
 		return r.RemoteAddress()
 	}
 	return r.NextHop()
@@ -542,7 +510,7 @@ func (r *Route) Acquire() {
 // +checklocksread:r.mu
 func (r *Route) acquireLocked() {
 	if ep := r.localAddressEndpoint; ep != nil {
-		if !ep.TryIncRef() {
+		if !ep.IncRef() {
 			panic(fmt.Sprintf("failed to increment reference count for local address endpoint = %s", r.LocalAddress()))
 		}
 	}
@@ -582,7 +550,7 @@ func (r *Route) IsOutboundBroadcast() bool {
 // "Reachable" is defined as having full-duplex communication between the
 // local and remote ends of the route.
 func (r *Route) ConfirmReachable() {
-	if entry := r.getCachedNeighborEntry(); entry != nil {
-		entry.handleUpperLevelConfirmation()
+	if r.linkRes != nil {
+		r.linkRes.confirmReachable(r.nextHop())
 	}
 }

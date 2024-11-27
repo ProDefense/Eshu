@@ -3,8 +3,6 @@
 package header
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -38,10 +36,10 @@ func (t *TCPSynOptions) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(6, &t.Flags)
 }
 
-func (t *TCPSynOptions) afterLoad(context.Context) {}
+func (t *TCPSynOptions) afterLoad() {}
 
 // +checklocksignore
-func (t *TCPSynOptions) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (t *TCPSynOptions) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &t.MSS)
 	stateSourceObject.Load(1, &t.WS)
 	stateSourceObject.Load(2, &t.TS)
@@ -71,10 +69,10 @@ func (r *SACKBlock) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &r.End)
 }
 
-func (r *SACKBlock) afterLoad(context.Context) {}
+func (r *SACKBlock) afterLoad() {}
 
 // +checklocksignore
-func (r *SACKBlock) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (r *SACKBlock) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &r.Start)
 	stateSourceObject.Load(1, &r.End)
 }
@@ -103,10 +101,10 @@ func (t *TCPOptions) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(3, &t.SACKBlocks)
 }
 
-func (t *TCPOptions) afterLoad(context.Context) {}
+func (t *TCPOptions) afterLoad() {}
 
 // +checklocksignore
-func (t *TCPOptions) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (t *TCPOptions) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &t.TS)
 	stateSourceObject.Load(1, &t.TSVal)
 	stateSourceObject.Load(2, &t.TSEcr)

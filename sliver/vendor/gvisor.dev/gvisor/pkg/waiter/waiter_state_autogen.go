@@ -3,8 +3,6 @@
 package waiter
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -30,10 +28,10 @@ func (e *Entry) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(2, &e.mask)
 }
 
-func (e *Entry) afterLoad(context.Context) {}
+func (e *Entry) afterLoad() {}
 
 // +checklocksignore
-func (e *Entry) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *Entry) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &e.waiterEntry)
 	stateSourceObject.Load(1, &e.eventListener)
 	stateSourceObject.Load(2, &e.mask)
@@ -57,10 +55,10 @@ func (q *Queue) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(0, &q.list)
 }
 
-func (q *Queue) afterLoad(context.Context) {}
+func (q *Queue) afterLoad() {}
 
 // +checklocksignore
-func (q *Queue) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (q *Queue) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &q.list)
 }
 
@@ -84,10 +82,10 @@ func (l *waiterList) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &l.tail)
 }
 
-func (l *waiterList) afterLoad(context.Context) {}
+func (l *waiterList) afterLoad() {}
 
 // +checklocksignore
-func (l *waiterList) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (l *waiterList) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &l.head)
 	stateSourceObject.Load(1, &l.tail)
 }
@@ -112,10 +110,10 @@ func (e *waiterEntry) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &e.prev)
 }
 
-func (e *waiterEntry) afterLoad(context.Context) {}
+func (e *waiterEntry) afterLoad() {}
 
 // +checklocksignore
-func (e *waiterEntry) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *waiterEntry) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &e.next)
 	stateSourceObject.Load(1, &e.prev)
 }

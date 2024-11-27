@@ -15,7 +15,6 @@
 package raw
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -34,8 +33,8 @@ func (p *rawPacket) loadReceivedAt(nsec int64) {
 }
 
 // afterLoad is invoked by stateify.
-func (e *endpoint) afterLoad(ctx context.Context) {
-	stack.RestoreStackFromContext(ctx).RegisterRestoredEndpoint(e)
+func (e *endpoint) afterLoad() {
+	stack.StackFromEnv.RegisterRestoredEndpoint(e)
 }
 
 // beforeSave is invoked by stateify.
@@ -43,8 +42,8 @@ func (e *endpoint) beforeSave() {
 	e.setReceiveDisabled(true)
 }
 
-// Restore implements tcpip.RestoredEndpoint.Restore.
-func (e *endpoint) Restore(s *stack.Stack) {
+// Resume implements tcpip.ResumableEndpoint.Resume.
+func (e *endpoint) Resume(s *stack.Stack) {
 	e.net.Resume(s)
 
 	e.setReceiveDisabled(false)

@@ -20,17 +20,14 @@ package wireguard
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// WGPortFwdRmCmd - Remove a WireGuard port forward.
-func WGPortFwdRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// WGPortFwdRmCmd - Remove a WireGuard port forward
+func WGPortFwdRmCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
@@ -40,16 +37,12 @@ func WGPortFwdRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string
 		return
 	}
 
-	fwdID, err := strconv.Atoi(args[0])
-	if err != nil {
-		con.PrintErrorf("Error converting portforward ID (%s) to int: %s", args[0], err.Error())
-		return
-	}
-
+	fwdID := ctx.Args.Int("id")
 	stopReq, err := con.Rpc.WGStopPortForward(context.Background(), &sliverpb.WGPortForwardStopReq{
 		ID:      int32(fwdID),
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
+
 	if err != nil {
 		con.PrintErrorf("Error: %v", err)
 		return
@@ -63,31 +56,4 @@ func WGPortFwdRmCmd(cmd *cobra.Command, con *console.SliverClient, args []string
 	if stopReq.Forwarder != nil {
 		con.PrintInfof("Removed port forwarding rule %s -> %s\n", stopReq.Forwarder.LocalAddr, stopReq.Forwarder.RemoteAddr)
 	}
-}
-
-// PortfwdIDCompleter completes IDs of WireGuard remote portforwarders.
-func PortfwdIDCompleter(con *console.SliverClient) carapace.Action {
-	callback := func(_ carapace.Context) carapace.Action {
-		results := make([]string, 0)
-
-		fwdList, err := con.Rpc.WGListForwarders(context.Background(), &sliverpb.WGTCPForwardersReq{
-			Request: con.ActiveTarget.Request(con.App.ActiveMenu().Root()),
-		})
-		if err != nil {
-			return carapace.ActionMessage("failed to get Wireguard port forwarders: %s", err.Error())
-		}
-
-		for _, fwd := range fwdList.Forwarders {
-			results = append(results, strconv.Itoa(int(fwd.ID)))
-			results = append(results, fmt.Sprintf("%s <- %s", fwd.LocalAddr, fwd.RemoteAddr))
-		}
-
-		if len(results) == 0 {
-			return carapace.ActionMessage("no Wireguard port forwarders")
-		}
-
-		return carapace.ActionValuesDescribed(results...).Tag("wireguard port forwarders")
-	}
-
-	return carapace.ActionCallback(callback)
 }

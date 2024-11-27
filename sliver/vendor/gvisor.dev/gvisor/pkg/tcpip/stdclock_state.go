@@ -14,17 +14,13 @@
 
 package tcpip
 
-import (
-	"context"
-	"time"
-)
-
-// beforeSave is invoked by stateify.
-func (s *stdClock) beforeSave() {
-	s.monotonicOffset = s.NowMonotonic()
-}
+import "time"
 
 // afterLoad is invoked by stateify.
-func (s *stdClock) afterLoad(context.Context) {
+func (s *stdClock) afterLoad() {
 	s.baseTime = time.Now()
+
+	s.monotonicMU.Lock()
+	defer s.monotonicMU.Unlock()
+	s.monotonicOffset = s.maxMonotonic
 }

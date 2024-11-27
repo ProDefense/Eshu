@@ -23,20 +23,21 @@ import (
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
+
+	"github.com/desertbit/grumble"
 )
 
-// StartRportFwdListenerCmd - Start listener for reverse port forwarding on implant.
-func StopRportFwdListenerCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// StartRportFwdListenerCmd - Start listener for reverse port forwarding on implant
+func StopRportFwdListenerCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
 
-	listenerID, _ := cmd.Flags().GetUint32("id")
+	listenerID := ctx.Flags.Int("id")
 	rportfwdListener, err := con.Rpc.StopRportFwdListener(context.Background(), &sliverpb.RportFwdStopListenerReq{
-		Request: con.ActiveTarget.Request(cmd),
-		ID:      listenerID,
+		Request: con.ActiveTarget.Request(ctx),
+		ID:      uint32(listenerID),
 	})
 	if err != nil {
 		con.PrintWarnf("%s\n", err)
@@ -45,7 +46,7 @@ func StopRportFwdListenerCmd(cmd *cobra.Command, con *console.SliverClient, args
 	printStoppedRportFwdListener(rportfwdListener, con)
 }
 
-func printStoppedRportFwdListener(rportfwdListener *sliverpb.RportFwdListener, con *console.SliverClient) {
+func printStoppedRportFwdListener(rportfwdListener *sliverpb.RportFwdListener, con *console.SliverConsoleClient) {
 	if rportfwdListener.Response != nil && rportfwdListener.Response.Err != "" {
 		con.PrintErrorf("%s", rportfwdListener.Response.Err)
 		return

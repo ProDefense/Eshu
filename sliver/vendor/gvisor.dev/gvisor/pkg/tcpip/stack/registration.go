@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/waiter"
@@ -84,21 +84,6 @@ const (
 	// DestinationNetworkUnreachableTransportError indicates that the destination
 	// network was unreachable.
 	DestinationNetworkUnreachableTransportError
-
-	// DestinationProtoUnreachableTransportError indicates that the destination
-	// protocol was unreachable.
-	DestinationProtoUnreachableTransportError
-
-	// SourceRouteFailedTransportError indicates that the source route failed.
-	SourceRouteFailedTransportError
-
-	// SourceHostIsolatedTransportError indicates that the source machine is not
-	// on the network.
-	SourceHostIsolatedTransportError
-
-	// DestinationHostDownTransportError indicates that the destination host is
-	// down.
-	DestinationHostDownTransportError
 )
 
 // TransportError is a marker interface for errors that may be handled by the
@@ -534,11 +519,11 @@ type AssignableAddressEndpoint interface {
 	// to its NetworkEndpoint.
 	IsAssigned(allowExpired bool) bool
 
-	// TryIncRef tries to increment this endpoint's reference count.
+	// IncRef increments this endpoint's reference count.
 	//
 	// Returns true if it was successfully incremented. If it returns false, then
 	// the endpoint is considered expired and should no longer be used.
-	TryIncRef() bool
+	IncRef() bool
 
 	// DecRef decrements this endpoint's reference count.
 	DecRef()
@@ -681,7 +666,7 @@ type AddressableEndpoint interface {
 	// The returned endpoint's reference count is incremented.
 	//
 	// Returns nil if a primary address is not available.
-	AcquireOutgoingPrimaryAddress(remoteAddr, srcHint tcpip.Address, allowExpired bool) AddressEndpoint
+	AcquireOutgoingPrimaryAddress(remoteAddr tcpip.Address, allowExpired bool) AddressEndpoint
 
 	// PrimaryAddresses returns the primary addresses.
 	PrimaryAddresses() []tcpip.AddressWithPrefix
@@ -929,7 +914,7 @@ type MulticastRouteOutgoingInterface struct {
 	// ID corresponds to the outgoing NIC.
 	ID tcpip.NICID
 
-	// MinTTL represents the minimum TTL/HopLimit a multicast packet must have to
+	// MinTTL represents the minumum TTL/HopLimit a multicast packet must have to
 	// be sent through the outgoing interface.
 	//
 	// Note: a value of 0 allows all packets to be forwarded.
@@ -1034,7 +1019,7 @@ type NetworkDispatcher interface {
 	// This method should be called with both incoming and outgoing packets.
 	//
 	// If the link-layer has a header, the packet's link header must be populated.
-	DeliverLinkPacket(protocol tcpip.NetworkProtocolNumber, pkt *PacketBuffer)
+	DeliverLinkPacket(protocol tcpip.NetworkProtocolNumber, pkt *PacketBuffer, incoming bool)
 }
 
 // LinkEndpointCapabilities is the type associated with the capabilities
@@ -1064,9 +1049,6 @@ const (
 type LinkWriter interface {
 	// WritePackets writes packets. Must not be called with an empty list of
 	// packet buffers.
-	//
-	// Each packet must have the link-layer header set, if the link requires
-	// one.
 	//
 	// WritePackets may modify the packet buffers, and takes ownership of the PacketBufferList.
 	// it is not safe to use the PacketBufferList after a call to WritePackets.
@@ -1124,9 +1106,6 @@ type NetworkLinkEndpoint interface {
 
 	// AddHeader adds a link layer header to the packet if required.
 	AddHeader(*PacketBuffer)
-
-	// ParseHeader parses the link layer header to the packet.
-	ParseHeader(*PacketBuffer) bool
 }
 
 // QueueingDiscipline provides a queueing strategy for outgoing packets (e.g
@@ -1167,7 +1146,7 @@ type InjectableLinkEndpoint interface {
 	// link.
 	//
 	// dest is used by endpoints with multiple raw destinations.
-	InjectOutbound(dest tcpip.Address, packet *buffer.View) tcpip.Error
+	InjectOutbound(dest tcpip.Address, packet *bufferv2.View) tcpip.Error
 }
 
 // DADResult is a marker interface for the result of a duplicate address

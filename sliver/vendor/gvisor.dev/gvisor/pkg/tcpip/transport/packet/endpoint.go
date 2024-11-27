@@ -28,7 +28,7 @@ import (
 	"io"
 	"time"
 
-	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/bufferv2"
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -94,7 +94,7 @@ type endpoint struct {
 }
 
 // NewEndpoint returns a new packet endpoint.
-func NewEndpoint(s *stack.Stack, cooked bool, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) tcpip.Endpoint {
+func NewEndpoint(s *stack.Stack, cooked bool, netProto tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, tcpip.Error) {
 	ep := &endpoint{
 		stack:         s,
 		cooked:        cooked,
@@ -115,9 +115,10 @@ func NewEndpoint(s *stack.Stack, cooked bool, netProto tcpip.NetworkProtocolNumb
 		ep.ops.SetReceiveBufferSize(int64(rs.Default), false /* notify */)
 	}
 
-	s.RegisterPacketEndpoint(0, netProto, ep)
-
-	return ep
+	if err := s.RegisterPacketEndpoint(0, netProto, ep); err != nil {
+		return nil, err
+	}
+	return ep, nil
 }
 
 // Abort implements stack.TransportEndpoint.Abort.
@@ -218,7 +219,7 @@ func (ep *endpoint) Write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, tc
 
 	var remote tcpip.LinkAddress
 	if to := opts.To; to != nil {
-		remote = to.LinkAddr
+		remote = tcpip.LinkAddress(to.Addr)
 
 		if n := to.NIC; n != 0 {
 			nicID = n
@@ -233,12 +234,7 @@ func (ep *endpoint) Write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, tc
 		return 0, &tcpip.ErrInvalidOptionValue{}
 	}
 
-	// Prevents giant buffer allocations.
-	if p.Len() > header.DatagramMaximumSize {
-		return 0, &tcpip.ErrMessageTooLong{}
-	}
-
-	var payload buffer.Buffer
+	var payload bufferv2.Buffer
 	if _, err := payload.WriteFromReader(p, int64(p.Len())); err != nil {
 		return 0, &tcpip.ErrBadBuffer{}
 	}
@@ -262,7 +258,7 @@ func (*endpoint) Disconnect() tcpip.Error {
 }
 
 // Connect implements tcpip.Endpoint.Connect. Packet sockets cannot be
-// connected, and this function always returns *tcpip.ErrNotSupported.
+// connected, and this function always returnes *tcpip.ErrNotSupported.
 func (*endpoint) Connect(tcpip.FullAddress) tcpip.Error {
 	return &tcpip.ErrNotSupported{}
 }
@@ -450,7 +446,7 @@ func (ep *endpoint) HandlePacket(nicID tcpip.NICID, netProto tcpip.NetworkProtoc
 
 	if len(pkt.LinkHeader().Slice()) != 0 {
 		hdr := header.Ethernet(pkt.LinkHeader().Slice())
-		rcvdPkt.senderAddr.LinkAddr = hdr.SourceAddress()
+		rcvdPkt.senderAddr.Addr = tcpip.Address(hdr.SourceAddress())
 	}
 
 	// Raw packet endpoints include link-headers in received packets.

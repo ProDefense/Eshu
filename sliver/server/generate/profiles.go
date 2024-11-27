@@ -21,58 +21,30 @@ package generate
 import (
 	"errors"
 
-	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/server/db"
 	"github.com/bishopfox/sliver/server/db/models"
-	"github.com/gofrs/uuid"
 )
 
 // SaveImplantProfile - Save a sliver profile to disk
-func SaveImplantProfile(pbProfile *clientpb.ImplantProfile) (*clientpb.ImplantProfile, error) {
-	dbProfile, err := db.ImplantProfileByName(pbProfile.Name)
+func SaveImplantProfile(name string, config *models.ImplantConfig) error {
+
+	profile, err := db.ImplantProfileByName(name)
 	if err != nil && !errors.Is(err, db.ErrRecordNotFound) {
-		return nil, err
+		return err
 	}
 
-	profile := models.ImplantProfileFromProtobuf(pbProfile)
 	dbSession := db.Session()
-
 	if errors.Is(err, db.ErrRecordNotFound) {
 		err = dbSession.Create(&models.ImplantProfile{
-			Name:          profile.Name,
-			ImplantConfig: profile.ImplantConfig,
+			Name:          name,
+			ImplantConfig: config,
 		}).Error
-		if err != nil {
-			return nil, err
-		}
-		dbProfile, err = db.ImplantProfileByName(profile.Name)
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		configID, _ := uuid.FromString(dbProfile.Config.ID)
-		profile.ImplantConfig.ID = configID
-
-		profileID, _ := uuid.FromString(dbProfile.ID)
-		if profileID == uuid.Nil {
-			profile.ImplantConfig.ImplantProfileID = nil
-		} else {
-			profile.ImplantConfig.ImplantProfileID = &profileID
-		}
-
-		for _, c2 := range dbProfile.Config.C2 {
-			id, _ := uuid.FromString(c2.ID)
-			err := db.DeleteC2(id)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		err := dbSession.Save(profile.ImplantConfig).Error
-		if err != nil {
-			return nil, err
-		}
-		dbProfile = profile.ToProtobuf()
+		err = dbSession.Save(&models.ImplantProfile{
+			ID:            profile.ID,
+			Name:          name,
+			ImplantConfig: config,
+		}).Error
 	}
-	return dbProfile, err
+	return err
 }

@@ -3,8 +3,6 @@
 package ipv6
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -23,10 +21,10 @@ func (i *icmpv6DestinationUnreachableSockError) StateSave(stateSinkObject state.
 	i.beforeSave()
 }
 
-func (i *icmpv6DestinationUnreachableSockError) afterLoad(context.Context) {}
+func (i *icmpv6DestinationUnreachableSockError) afterLoad() {}
 
 // +checklocksignore
-func (i *icmpv6DestinationUnreachableSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (i *icmpv6DestinationUnreachableSockError) StateLoad(stateSourceObject state.Source) {
 }
 
 func (i *icmpv6DestinationNetworkUnreachableSockError) StateTypeName() string {
@@ -47,10 +45,10 @@ func (i *icmpv6DestinationNetworkUnreachableSockError) StateSave(stateSinkObject
 	stateSinkObject.Save(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
-func (i *icmpv6DestinationNetworkUnreachableSockError) afterLoad(context.Context) {}
+func (i *icmpv6DestinationNetworkUnreachableSockError) afterLoad() {}
 
 // +checklocksignore
-func (i *icmpv6DestinationNetworkUnreachableSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (i *icmpv6DestinationNetworkUnreachableSockError) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
@@ -72,10 +70,10 @@ func (i *icmpv6DestinationPortUnreachableSockError) StateSave(stateSinkObject st
 	stateSinkObject.Save(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
-func (i *icmpv6DestinationPortUnreachableSockError) afterLoad(context.Context) {}
+func (i *icmpv6DestinationPortUnreachableSockError) afterLoad() {}
 
 // +checklocksignore
-func (i *icmpv6DestinationPortUnreachableSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (i *icmpv6DestinationPortUnreachableSockError) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
@@ -97,10 +95,10 @@ func (i *icmpv6DestinationAddressUnreachableSockError) StateSave(stateSinkObject
 	stateSinkObject.Save(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
-func (i *icmpv6DestinationAddressUnreachableSockError) afterLoad(context.Context) {}
+func (i *icmpv6DestinationAddressUnreachableSockError) afterLoad() {}
 
 // +checklocksignore
-func (i *icmpv6DestinationAddressUnreachableSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (i *icmpv6DestinationAddressUnreachableSockError) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &i.icmpv6DestinationUnreachableSockError)
 }
 
@@ -122,10 +120,10 @@ func (e *icmpv6PacketTooBigSockError) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(0, &e.mtu)
 }
 
-func (e *icmpv6PacketTooBigSockError) afterLoad(context.Context) {}
+func (e *icmpv6PacketTooBigSockError) afterLoad() {}
 
 // +checklocksignore
-func (e *icmpv6PacketTooBigSockError) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *icmpv6PacketTooBigSockError) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &e.mtu)
 }
 

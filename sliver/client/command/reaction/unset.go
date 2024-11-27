@@ -28,12 +28,12 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/client/core"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// ReactionUnsetCmd - Unset a reaction upon an event.
-func ReactionUnsetCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	reactionID, _ := cmd.Flags().GetInt("id")
+// ReactionUnsetCmd - Unset a reaction upon an event
+func ReactionUnsetCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	reactionID := ctx.Flags.Int("id")
 	if reactionID == 0 {
 		reaction, err := selectReaction(con)
 		if err != nil {
@@ -52,7 +52,7 @@ func ReactionUnsetCmd(cmd *cobra.Command, con *console.SliverClient, args []stri
 	con.Println()
 }
 
-func selectReaction(con *console.SliverClient) (*core.Reaction, error) {
+func selectReaction(con *console.SliverConsoleClient) (*core.Reaction, error) {
 	outputBuf := bytes.NewBufferString("")
 	table := tabwriter.NewWriter(outputBuf, 0, 2, 2, ' ', 0)
 	allReactions := core.Reactions.All()

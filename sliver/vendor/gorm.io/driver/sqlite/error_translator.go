@@ -6,11 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// The error codes to map sqlite errors to gorm errors, here is a reference about error codes for sqlite https://www.sqlite.org/rescode.html.
-var errCodes = map[int]error{
-	1555: gorm.ErrDuplicatedKey,
-	2067: gorm.ErrDuplicatedKey,
-	787:  gorm.ErrForeignKeyViolated,
+var errCodes = map[string]int{
+	"uniqueConstraint": 2067,
 }
 
 type ErrMessage struct {
@@ -33,8 +30,8 @@ func (dialector Dialector) Translate(err error) error {
 		return err
 	}
 
-	if translatedErr, found := errCodes[errMsg.ExtendedCode]; found {
-		return translatedErr
+	if errMsg.ExtendedCode == errCodes["uniqueConstraint"] {
+		return gorm.ErrDuplicatedKey
 	}
 	return err
 }

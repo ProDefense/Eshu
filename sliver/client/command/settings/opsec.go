@@ -22,11 +22,11 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/bishopfox/sliver/client/assets"
 	"github.com/bishopfox/sliver/client/console"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// SettingsAutoAdultCmd - The client settings command.
-func SettingsAutoAdultCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// SettingsAutoAdultCmd - The client settings command
+func SettingsAutoAdultCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	var err error
 	if con.Settings == nil {
 		con.Settings, err = assets.LoadSettings()
@@ -39,8 +39,8 @@ func SettingsAutoAdultCmd(cmd *cobra.Command, con *console.SliverClient, args []
 	con.PrintInfof("Auto Adult = %v\n", con.Settings.AutoAdult)
 }
 
-// IsUserAnAdult - This should be called for any dangerous (OPSEC-wise) functions.
-func IsUserAnAdult(con *console.SliverClient) bool {
+// IsUserAnAdult - This should be called for any dangerous (OPSEC-wise) functions
+func IsUserAnAdult(con *console.SliverConsoleClient) bool {
 	if GetAutoAdult(con) {
 		return true
 	}
@@ -50,8 +50,8 @@ func IsUserAnAdult(con *console.SliverClient) bool {
 	return confirm
 }
 
-// GetAutoAdult - Get the current auto adult setting.
-func GetAutoAdult(con *console.SliverClient) bool {
+// GetAutoAdult - Get the current auto adult setting
+func GetAutoAdult(con *console.SliverConsoleClient) bool {
 	if con.Settings == nil {
 		con.Settings, _ = assets.LoadSettings()
 	}

@@ -20,6 +20,7 @@ package loot
 
 import (
 	"errors"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -44,26 +45,19 @@ var (
 // LocalBackend - A loot backend that saves files locally to disk
 type LocalBackend struct {
 	LocalFileDir string
+	LocalCredDir string
 }
 
 // Add - Add a piece of loot
 func (l *LocalBackend) Add(loot *clientpb.Loot) (*clientpb.Loot, error) {
-	host, err := db.HostByHostUUID(loot.OriginHostUUID)
-	var hostID uuid.UUID
-	if err != nil {
-		lootLog.Warnf("Failed to find host %s for loot %s", loot.OriginHostUUID, loot.ID)
-		hostID = uuid.Nil
-	} else {
-		hostID = host.HostUUID
-	}
 	dbLoot := &models.Loot{
-		Name:         loot.GetName(),
-		FileType:     int(loot.GetFileType()),
-		Size:         int64(len(loot.File.Data)),
-		OriginHostID: hostID,
+		Name:           loot.GetName(),
+		Type:           int(loot.GetType()),
+		CredentialType: int(loot.GetCredentialType()),
+		FileType:       int(loot.GetFileType()),
 	}
 	dbSession := db.Session()
-	err = dbSession.Create(dbLoot).Error
+	err := dbSession.Create(dbLoot).Error
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +68,19 @@ func (l *LocalBackend) Add(loot *clientpb.Loot) (*clientpb.Loot, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = os.WriteFile(lootLocalFile, data, 0600)
+		err = ioutil.WriteFile(lootLocalFile, data, 0600)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if loot.Credential != nil {
+		lootLocalCred := filepath.Join(l.LocalCredDir, dbLoot.ID.String())
+		data, err := proto.Marshal(loot.Credential)
+		if err != nil {
+			return nil, err
+		}
+		err = ioutil.WriteFile(lootLocalCred, data, 0600)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +97,7 @@ func (l *LocalBackend) Add(loot *clientpb.Loot) (*clientpb.Loot, error) {
 // Update - Update metadata about loot, currently only 'name' can be changed
 func (l *LocalBackend) Update(lootReq *clientpb.Loot) (*clientpb.Loot, error) {
 	dbSession := db.Session()
-	lootUUID, err := uuid.FromString(lootReq.ID)
+	lootUUID, err := uuid.FromString(lootReq.LootID)
 	if err != nil {
 		return nil, ErrInvalidLootID
 	}
@@ -108,7 +114,7 @@ func (l *LocalBackend) Update(lootReq *clientpb.Loot) (*clientpb.Loot, error) {
 		}
 	}
 
-	return l.GetContent(lootReq.ID, false)
+	return l.GetContent(lootReq.LootID, false)
 }
 
 // Rm - Remove a piece of loot
@@ -133,6 +139,15 @@ func (l *LocalBackend) Rm(lootID string) error {
 		}
 	}
 
+	// Credential Loot
+	lootCredFile := filepath.Join(l.LocalCredDir, dbLoot.ID.String())
+	if _, err := os.Stat(lootCredFile); !os.IsNotExist(err) {
+		err = os.Remove(lootCredFile)
+		if err != nil {
+			lootLog.Error(err)
+		}
+	}
+
 	result = dbSession.Delete(&dbLoot)
 	return result.Error
 }
@@ -151,17 +166,37 @@ func (l *LocalBackend) GetContent(lootID string, eager bool) (*clientpb.Loot, er
 	}
 
 	// Re-construct protobuf object
-	loot := dbLoot.ToProtobuf()
+	loot := &clientpb.Loot{
+		LootID:         dbLoot.ID.String(),
+		Name:           dbLoot.Name,
+		Type:           clientpb.LootType(dbLoot.Type),
+		FileType:       clientpb.FileType(dbLoot.FileType),
+		CredentialType: clientpb.CredentialType(dbLoot.CredentialType),
+	}
 
 	// File Loot
 	lootLocalFile := filepath.Join(l.LocalFileDir, dbLoot.ID.String())
 	if _, err := os.Stat(lootLocalFile); !os.IsNotExist(err) {
-		data, err := os.ReadFile(lootLocalFile)
+		data, err := ioutil.ReadFile(lootLocalFile)
 		if err != nil {
 			return nil, err
 		}
 		loot.File = &commonpb.File{}
 		err = proto.Unmarshal(data, loot.File)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Credential Loot
+	lootCredFile := filepath.Join(l.LocalCredDir, dbLoot.ID.String())
+	if _, err := os.Stat(lootCredFile); !os.IsNotExist(err) {
+		data, err := ioutil.ReadFile(lootCredFile)
+		if err != nil {
+			return nil, err
+		}
+		loot.Credential = &clientpb.Credential{}
+		err = proto.Unmarshal(data, loot.Credential)
 		if err != nil {
 			return nil, err
 		}
@@ -188,6 +223,27 @@ func (l *LocalBackend) All() *clientpb.AllLoot {
 		}
 		if loot.File != nil {
 			loot.File.Data = nil
+		}
+		all.Loot = append(all.Loot, loot)
+	}
+	return all
+}
+
+// AllOf - Get all loot of a particular loot type
+func (l *LocalBackend) AllOf(lootType clientpb.LootType) *clientpb.AllLoot {
+	dbSession := db.Session()
+	allDBLoot := []*models.Loot{}
+	result := dbSession.Where("type == ?", int(lootType)).Find(&allDBLoot)
+	if result.Error != nil {
+		lootLog.Error(result.Error)
+		return nil
+	}
+	all := &clientpb.AllLoot{Loot: []*clientpb.Loot{}}
+	for _, dbLoot := range allDBLoot {
+		loot, err := l.GetContent(dbLoot.ID.String(), true)
+		if err != nil {
+			lootLog.Error(err)
+			continue
 		}
 		all.Loot = append(all.Loot, loot)
 	}

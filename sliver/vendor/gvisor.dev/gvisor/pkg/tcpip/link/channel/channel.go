@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package channel provides the implementation of channel-based data-link layer
+// Package channel provides the implemention of channel-based data-link layer
 // endpoints. Such endpoints allow injection of inbound packets and store
 // outbound packets in a channel.
 package channel
@@ -135,14 +135,11 @@ var _ stack.GSOEndpoint = (*Endpoint)(nil)
 // Endpoint is link layer endpoint that stores outbound packets in a channel
 // and allows injection of inbound packets.
 type Endpoint struct {
+	dispatcher         stack.NetworkDispatcher
 	mtu                uint32
 	linkAddr           tcpip.LinkAddress
 	LinkEPCapabilities stack.LinkEndpointCapabilities
 	SupportedGSOKind   stack.SupportedGSO
-
-	mu sync.RWMutex
-	// +checklocks:mu
-	dispatcher stack.NetworkDispatcher
 
 	// Outbound packet queue.
 	q *queue
@@ -180,7 +177,7 @@ func (e *Endpoint) ReadContext(ctx context.Context) *stack.PacketBuffer {
 // Drain removes all outbound packets from the channel and counts them.
 func (e *Endpoint) Drain() int {
 	c := 0
-	for pkt := e.Read(); !pkt.IsNil(); pkt = e.Read() {
+	for pkt := e.Read(); pkt != nil; pkt = e.Read() {
 		pkt.DecRef()
 		c++
 	}
@@ -192,29 +189,19 @@ func (e *Endpoint) NumQueued() int {
 	return e.q.Num()
 }
 
-// InjectInbound injects an inbound packet. If the endpoint is not attached, the
-// packet is not delivered.
+// InjectInbound injects an inbound packet.
 func (e *Endpoint) InjectInbound(protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
-	e.mu.RLock()
-	d := e.dispatcher
-	e.mu.RUnlock()
-	if d != nil {
-		d.DeliverNetworkPacket(protocol, pkt)
-	}
+	e.dispatcher.DeliverNetworkPacket(protocol, pkt)
 }
 
 // Attach saves the stack network-layer dispatcher for use later when packets
 // are injected.
 func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.dispatcher = dispatcher
 }
 
 // IsAttached implements stack.LinkEndpoint.IsAttached.
 func (e *Endpoint) IsAttached() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
 	return e.dispatcher != nil
 }
 
@@ -288,6 +275,3 @@ func (*Endpoint) ARPHardwareType() header.ARPHardwareType {
 
 // AddHeader implements stack.LinkEndpoint.AddHeader.
 func (*Endpoint) AddHeader(*stack.PacketBuffer) {}
-
-// ParseHeader implements stack.LinkEndpoint.ParseHeader.
-func (*Endpoint) ParseHeader(*stack.PacketBuffer) bool { return true }

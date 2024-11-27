@@ -25,12 +25,13 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// ReconfigCmd - Reconfigure metadata about a sessions.
-func ReconfigCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ReconfigCmd - Reconfigure metadata about a sessions
+func ReconfigCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
@@ -38,10 +39,8 @@ func ReconfigCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 
 	var err error
 	var reconnectInterval time.Duration
-	interval, _ := cmd.Flags().GetString("reconnect-interval")
-
-	if interval != "" {
-		reconnectInterval, err = time.ParseDuration(interval)
+	if ctx.Flags.String("reconnect-interval") != "" {
+		reconnectInterval, err = time.ParseDuration(ctx.Flags.String("reconnect-interval"))
 		if err != nil {
 			con.PrintErrorf("Invalid reconnect interval: %s\n", err)
 			return
@@ -50,19 +49,16 @@ func ReconfigCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 
 	var beaconInterval time.Duration
 	var beaconJitter time.Duration
-	binterval, _ := cmd.Flags().GetString("beacon-interval")
-	bjitter, _ := cmd.Flags().GetString("beacon-jitter")
-
 	if beacon != nil {
-		if binterval != "" {
-			beaconInterval, err = time.ParseDuration(binterval)
+		if ctx.Flags.String("beacon-interval") != "" {
+			beaconInterval, err = time.ParseDuration(ctx.Flags.String("beacon-interval"))
 			if err != nil {
 				con.PrintErrorf("Invalid beacon interval: %s\n", err)
 				return
 			}
 		}
-		if bjitter != "" {
-			beaconJitter, err = time.ParseDuration(bjitter)
+		if ctx.Flags.String("beacon-jitter") != "" {
+			beaconJitter, err = time.ParseDuration(ctx.Flags.String("beacon-jitter"))
 			if err != nil {
 				con.PrintErrorf("Invalid beacon jitter: %s\n", err)
 				return
@@ -77,8 +73,9 @@ func ReconfigCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		ReconnectInterval: int64(reconnectInterval),
 		BeaconInterval:    int64(beaconInterval),
 		BeaconJitter:      int64(beaconJitter),
-		Request:           con.ActiveTarget.Request(cmd),
+		Request:           con.ActiveTarget.Request(ctx),
 	})
+
 	if err != nil {
 		con.PrintWarnf("%s\n", err)
 		return

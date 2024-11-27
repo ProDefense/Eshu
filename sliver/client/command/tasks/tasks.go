@@ -27,12 +27,12 @@ import (
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/spf13/cobra"
 )
 
-// TasksCmd - Manage beacon tasks.
-func TasksCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// TasksCmd - Manage beacon tasks
+func TasksCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	beacon := con.ActiveTarget.GetBeaconInteractive()
 	if beacon == nil {
 		return
@@ -42,11 +42,11 @@ func TasksCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
-	PrintBeaconTasks(beaconTasks.Tasks, cmd, con)
+	PrintBeaconTasks(beaconTasks.Tasks, ctx, con)
 }
 
-// PrintBeaconTasks - Print beacon tasks.
-func PrintBeaconTasks(tasks []*clientpb.BeaconTask, cmd *cobra.Command, con *console.SliverClient) {
+// PrintBeaconTasks - Print beacon tasks
+func PrintBeaconTasks(tasks []*clientpb.BeaconTask, ctx *grumble.Context, con *console.SliverConsoleClient) {
 	tw := table.NewWriter()
 	tw.SetStyle(settings.GetTableStyle(con))
 	tw.AppendHeader(table.Row{
@@ -62,8 +62,7 @@ func PrintBeaconTasks(tasks []*clientpb.BeaconTask, cmd *cobra.Command, con *con
 		return tasks[i].CreatedAt > tasks[j].CreatedAt
 	})
 
-	filterFlag, _ := cmd.Flags().GetString("filter")
-	filter := strings.ToLower(filterFlag)
+	filter := strings.ToLower(ctx.Flags.String("filter"))
 	for _, task := range tasks {
 		if filter != "" && !strings.HasPrefix(strings.ToLower(task.Description), filter) {
 			continue
@@ -85,8 +84,8 @@ func PrintBeaconTasks(tasks []*clientpb.BeaconTask, cmd *cobra.Command, con *con
 			completedAt,
 		})
 	}
-	overflow, _ := cmd.Flags().GetBool("overflow")
-	skipPages, _ := cmd.Flags().GetInt("skip-pages")
+	overflow := ctx.Flags.Bool("overflow")
+	skipPages := ctx.Flags.Int("skip-pages")
 	settings.PaginateTable(tw, skipPages, overflow, true, con)
 }
 

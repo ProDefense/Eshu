@@ -20,36 +20,32 @@ package rportfwd
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
-// StartRportFwdListenerCmd - Start listener for reverse port forwarding on implant.
-func RportFwdListenersCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// StartRportFwdListenerCmd - Start listener for reverse port forwarding on implant
+func RportFwdListenersCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session := con.ActiveTarget.GetSessionInteractive()
 	if session == nil {
 		return
 	}
 
 	rportfwdListeners, err := con.Rpc.GetRportFwdListeners(context.Background(), &sliverpb.RportFwdListenersReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintWarnf("%s\n", err)
 		return
 	}
-	PrintRportFwdListeners(rportfwdListeners, cmd.Flags(), con)
+	PrintRportFwdListeners(rportfwdListeners, ctx.Flags, con)
 }
 
-func PrintRportFwdListeners(rportfwdListeners *sliverpb.RportFwdListeners, flags *pflag.FlagSet, con *console.SliverClient) {
+func PrintRportFwdListeners(rportfwdListeners *sliverpb.RportFwdListeners, flags grumble.FlagMap, con *console.SliverConsoleClient) {
 	if rportfwdListeners.Response != nil && rportfwdListeners.Response.Err != "" {
 		con.PrintErrorf("%s\n", rportfwdListeners.Response.Err)
 		return
@@ -75,33 +71,4 @@ func PrintRportFwdListeners(rportfwdListeners *sliverpb.RportFwdListeners, flags
 		})
 	}
 	con.Printf("%s\n", tw.Render())
-}
-
-// PortfwdIDCompleter completes IDs of remote portforwarders.
-func PortfwdIDCompleter(con *console.SliverClient) carapace.Action {
-	callback := func(_ carapace.Context) carapace.Action {
-		results := make([]string, 0)
-
-		rportfwdListeners, err := con.Rpc.GetRportFwdListeners(context.Background(), &sliverpb.RportFwdListenersReq{
-			Request: con.ActiveTarget.Request(con.App.ActiveMenu().Root()),
-		})
-		if err != nil {
-			return carapace.ActionMessage("failed to get remote port forwarders: %s", err.Error())
-		}
-
-		for _, fwd := range rportfwdListeners.Listeners {
-			results = append(results, strconv.Itoa(int(fwd.ID)))
-			faddr := fmt.Sprintf("%s:%d", fwd.ForwardAddress, fwd.ForwardPort)
-			laddr := fmt.Sprintf("%s:%d", fwd.BindAddress, fwd.BindPort)
-			results = append(results, fmt.Sprintf("%s <- %s", laddr, faddr))
-		}
-
-		if len(results) == 0 {
-			return carapace.ActionMessage("no remote port forwarders")
-		}
-
-		return carapace.ActionValuesDescribed(results...).Tag("remote port forwarders")
-	}
-
-	return carapace.ActionCallback(callback)
 }

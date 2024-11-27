@@ -21,54 +21,51 @@ package processes
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/bishopfox/sliver/client/command/loot"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"google.golang.org/protobuf/proto"
 )
 
 // ProcdumpCmd - Dump the memory of a remote process
-func ProcdumpCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func ProcdumpCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	pid, _ := cmd.Flags().GetInt("pid")
-	name, _ := cmd.Flags().GetString("name")
-	saveTo, _ := cmd.Flags().GetString("save")
-	saveLoot, _ := cmd.Flags().GetBool("loot")
-	lootName, _ := cmd.Flags().GetString("loot-name")
+	pid := ctx.Flags.Int("pid")
+	name := ctx.Flags.String("name")
+	saveTo := ctx.Flags.String("save")
+	saveLoot := ctx.Flags.Bool("loot")
+	lootName := ctx.Flags.String("loot-name")
 
 	if pid == -1 && name != "" {
-		pid = GetPIDByName(cmd, name, con)
+		pid = GetPIDByName(ctx, name, con)
 	}
 	if pid == -1 {
 		con.PrintErrorf("Invalid process target\n")
 		return
 	}
 
-	timeout, _ := cmd.Flags().GetInt32("timeout")
-
-	if timeout < 1 {
+	if ctx.Flags.Int("timeout") < 1 {
 		con.PrintErrorf("Invalid timeout argument\n")
 		return
 	}
 
 	ctrl := make(chan bool)
 	con.SpinUntil("Dumping remote process memory ...", ctrl)
-
 	dump, err := con.Rpc.ProcessDump(context.Background(), &sliverpb.ProcessDumpReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 		Pid:     int32(pid),
-		Timeout: timeout,
+		Timeout: int32(ctx.Flags.Int("timeout") - 1),
 	})
 	ctrl <- true
 	<-ctrl
@@ -103,15 +100,16 @@ func ProcdumpCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 			PrintProcessDump(dump, saveTo, hostname, pid, con)
 		}
 	}
+
 }
 
 // PrintProcessDump - Handle the results of a process dump
-func PrintProcessDump(dump *sliverpb.ProcessDump, saveTo string, hostname string, pid int, con *console.SliverClient) {
+func PrintProcessDump(dump *sliverpb.ProcessDump, saveTo string, hostname string, pid int, con *console.SliverConsoleClient) {
 	var err error
 	var saveToFile *os.File
 	if saveTo == "" {
 		tmpFileName := filepath.Base(fmt.Sprintf("procdump_%s_%d_*", hostname, pid))
-		saveToFile, err = os.CreateTemp("", tmpFileName)
+		saveToFile, err = ioutil.TempFile("", tmpFileName)
 		if err != nil {
 			con.PrintErrorf("Error creating temporary file: %s\n", err)
 			return
@@ -138,7 +136,7 @@ func getHostname(session *clientpb.Session, beacon *clientpb.Beacon) string {
 	return ""
 }
 
-func LootProcessDump(dump *sliverpb.ProcessDump, lootName string, hostName string, pid int, con *console.SliverClient) {
+func LootProcessDump(dump *sliverpb.ProcessDump, lootName string, hostName string, pid int, con *console.SliverConsoleClient) {
 	timeNow := time.Now().UTC()
 	dumpFileName := fmt.Sprintf("procdump_%s_%d_%s.dmp", hostName, pid, timeNow.Format("20060102150405"))
 
@@ -146,6 +144,6 @@ func LootProcessDump(dump *sliverpb.ProcessDump, lootName string, hostName strin
 		lootName = dumpFileName
 	}
 
-	lootMessage := loot.CreateLootMessage(con.ActiveTarget.GetHostUUID(), dumpFileName, lootName, clientpb.FileType_BINARY, dump.GetData())
+	lootMessage := loot.CreateLootMessage(dumpFileName, lootName, clientpb.LootType_LOOT_FILE, clientpb.FileType_BINARY, dump.GetData())
 	loot.SendLootMessage(lootMessage, con)
 }

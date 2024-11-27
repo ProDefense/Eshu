@@ -1,5 +1,7 @@
 package encoders
 
+import "encoding/hex"
+
 /*
 	Sliver Implant Framework
 	Copyright (C) 2019  Bishop Fox
@@ -18,17 +20,18 @@ package encoders
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import "encoding/hex"
+// HexEncoderID - EncoderID
+const HexEncoderID = 92
 
 // Hex Encoder
-type HexEncoder struct{}
+type Hex struct{}
 
 // Encode - Hex Encode
-func (e HexEncoder) Encode(data []byte) ([]byte, error) {
-	return []byte(hex.EncodeToString(data)), nil
+func (e Hex) Encode(data []byte) []byte {
+	return []byte(hex.EncodeToString(data))
 }
 
 // Decode - Hex Decode
-func (e HexEncoder) Decode(data []byte) ([]byte, error) {
+func (e Hex) Decode(data []byte) ([]byte, error) {
 	return hex.DecodeString(string(data))
 }

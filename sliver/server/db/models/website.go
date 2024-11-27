@@ -19,8 +19,6 @@ package models
 */
 
 import (
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
@@ -49,16 +47,10 @@ func (w *Website) BeforeCreate(tx *gorm.DB) (err error) {
 }
 
 // ToProtobuf - Converts to protobuf object
-func (w *Website) ToProtobuf(webContentDir string) *clientpb.Website {
-	WebContents := map[string]*clientpb.WebContent{}
-	for _, webcontent := range w.WebContents {
-		contents, _ := os.ReadFile(filepath.Join(webContentDir, webcontent.Path))
-		WebContents[webcontent.ID.String()] = webcontent.ToProtobuf(&contents)
-	}
+func (w *Website) ToProtobuf() *clientpb.Website {
 	return &clientpb.Website{
-		ID:       w.ID.String(),
 		Name:     w.Name,
-		Contents: WebContents,
+		Contents: map[string]*clientpb.WebContent{},
 	}
 }
 
@@ -68,7 +60,7 @@ type WebContent struct {
 	WebsiteID uuid.UUID `gorm:"type:uuid;"`
 
 	Path        string `gorm:"primaryKey"`
-	Size        uint64
+	Size        int
 	ContentType string
 }
 
@@ -79,26 +71,11 @@ func (wc *WebContent) BeforeCreate(tx *gorm.DB) (err error) {
 }
 
 // ToProtobuf - Converts to protobuf object
-func (wc *WebContent) ToProtobuf(content *[]byte) *clientpb.WebContent {
+func (wc *WebContent) ToProtobuf(content []byte) *clientpb.WebContent {
 	return &clientpb.WebContent{
-		ID:          wc.ID.String(),
-		WebsiteID:   wc.WebsiteID.String(),
 		Path:        wc.Path,
 		Size:        uint64(wc.Size),
 		ContentType: wc.ContentType,
-		Content:     *content,
-	}
-}
-
-func WebContentFromProtobuf(pbWebContent *clientpb.WebContent) WebContent {
-	siteUUID, _ := uuid.FromString(pbWebContent.ID)
-	websiteUUID, _ := uuid.FromString(pbWebContent.WebsiteID)
-
-	return WebContent{
-		ID:          siteUUID,
-		WebsiteID:   websiteUUID,
-		Path:        pbWebContent.Path,
-		Size:        pbWebContent.Size,
-		ContentType: pbWebContent.ContentType,
+		Content:     content,
 	}
 }

@@ -18,7 +18,7 @@ package forwarder
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// {{if .Config.IncludeWG}}
+// {{if .Config.WGc2Enabled}}
 import (
 	"fmt"
 	"io"

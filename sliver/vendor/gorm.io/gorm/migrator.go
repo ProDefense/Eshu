@@ -87,8 +87,6 @@ type Migrator interface {
 	DropColumn(dst interface{}, field string) error
 	AlterColumn(dst interface{}, field string) error
 	MigrateColumn(dst interface{}, field *schema.Field, columnType ColumnType) error
-	// MigrateColumnUnique migrate column's UNIQUE constraint, it's part of MigrateColumn.
-	MigrateColumnUnique(dst interface{}, field *schema.Field, columnType ColumnType) error
 	HasColumn(dst interface{}, field string) bool
 	RenameColumn(dst interface{}, oldName, field string) error
 	ColumnTypes(dst interface{}) ([]ColumnType, error)

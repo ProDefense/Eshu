@@ -20,7 +20,7 @@ package transports
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// {{if .Config.IncludeNamePipe}}
+// {{if .Config.NamePipec2Enabled}}
 
 import (
 	"io"
@@ -157,4 +157,4 @@ func namedPipeConnect(uri *url.URL) (*Connection, error) {
 	return connection, nil
 }
 
-// {{end}} -IncludeNamePipe
+// {{end}} -NamePipec2Enabled

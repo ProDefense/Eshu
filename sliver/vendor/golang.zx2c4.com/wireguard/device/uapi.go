@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT
  *
- * Copyright (C) 2017-2023 WireGuard LLC. All Rights Reserved.
+ * Copyright (C) 2017-2021 WireGuard LLC. All Rights Reserved.
  */
 
 package device
@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.zx2c4.com/wireguard/ipc"
@@ -99,31 +100,33 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 
 		for _, peer := range device.peers.keyMap {
 			// Serialize peer state.
-			peer.handshake.mutex.RLock()
-			keyf("public_key", (*[32]byte)(&peer.handshake.remoteStatic))
-			keyf("preshared_key", (*[32]byte)(&peer.handshake.presharedKey))
-			peer.handshake.mutex.RUnlock()
-			sendf("protocol_version=1")
-			peer.endpoint.Lock()
-			if peer.endpoint.val != nil {
-				sendf("endpoint=%s", peer.endpoint.val.DstToString())
-			}
-			peer.endpoint.Unlock()
+			// Do the work in an anonymous function so that we can use defer.
+			func() {
+				peer.RLock()
+				defer peer.RUnlock()
 
-			nano := peer.lastHandshakeNano.Load()
-			secs := nano / time.Second.Nanoseconds()
-			nano %= time.Second.Nanoseconds()
+				keyf("public_key", (*[32]byte)(&peer.handshake.remoteStatic))
+				keyf("preshared_key", (*[32]byte)(&peer.handshake.presharedKey))
+				sendf("protocol_version=1")
+				if peer.endpoint != nil {
+					sendf("endpoint=%s", peer.endpoint.DstToString())
+				}
 
-			sendf("last_handshake_time_sec=%d", secs)
-			sendf("last_handshake_time_nsec=%d", nano)
-			sendf("tx_bytes=%d", peer.txBytes.Load())
-			sendf("rx_bytes=%d", peer.rxBytes.Load())
-			sendf("persistent_keepalive_interval=%d", peer.persistentKeepaliveInterval.Load())
+				nano := atomic.LoadInt64(&peer.stats.lastHandshakeNano)
+				secs := nano / time.Second.Nanoseconds()
+				nano %= time.Second.Nanoseconds()
 
-			device.allowedips.EntriesForPeer(peer, func(prefix netip.Prefix) bool {
-				sendf("allowed_ip=%s", prefix.String())
-				return true
-			})
+				sendf("last_handshake_time_sec=%d", secs)
+				sendf("last_handshake_time_nsec=%d", nano)
+				sendf("tx_bytes=%d", atomic.LoadUint64(&peer.stats.txBytes))
+				sendf("rx_bytes=%d", atomic.LoadUint64(&peer.stats.rxBytes))
+				sendf("persistent_keepalive_interval=%d", atomic.LoadUint32(&peer.persistentKeepaliveInterval))
+
+				device.allowedips.EntriesForPeer(peer, func(prefix netip.Prefix) bool {
+					sendf("allowed_ip=%s", prefix.String())
+					return true
+				})
+			}()
 		}
 	}()
 
@@ -260,7 +263,7 @@ func (peer *ipcSetPeer) handlePostConfig() {
 		return
 	}
 	if peer.created {
-		peer.endpoint.disableRoaming = peer.device.net.brokenRoaming && peer.endpoint.val != nil
+		peer.disableRoaming = peer.device.net.brokenRoaming && peer.endpoint != nil
 	}
 	if peer.device.isUp() {
 		peer.Start()
@@ -343,9 +346,9 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 		if err != nil {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set endpoint %v: %w", value, err)
 		}
-		peer.endpoint.Lock()
-		defer peer.endpoint.Unlock()
-		peer.endpoint.val = endpoint
+		peer.Lock()
+		defer peer.Unlock()
+		peer.endpoint = endpoint
 
 	case "persistent_keepalive_interval":
 		device.log.Verbosef("%v - UAPI: Updating persistent keepalive interval", peer.Peer)
@@ -355,7 +358,7 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set persistent keepalive interval: %w", err)
 		}
 
-		old := peer.persistentKeepaliveInterval.Swap(uint32(secs))
+		old := atomic.SwapUint32(&peer.persistentKeepaliveInterval, uint32(secs))
 
 		// Send immediate keepalive if we're turning it on and before it wasn't on.
 		peer.pkaOn = old == 0 && secs != 0

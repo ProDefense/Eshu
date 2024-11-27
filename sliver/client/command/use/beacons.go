@@ -19,14 +19,13 @@ package use
 */
 
 import (
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/command/beacons"
 	"github.com/bishopfox/sliver/client/console"
+	"github.com/desertbit/grumble"
 )
 
 // UseBeaconCmd - Change the active beacon
-func UseBeaconCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func UseBeaconCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	beacon, err := beacons.SelectBeacon(con)
 	if beacon != nil {
 		con.ActiveTarget.Set(nil, beacon)

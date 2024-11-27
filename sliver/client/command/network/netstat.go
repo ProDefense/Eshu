@@ -23,35 +23,34 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/desertbit/grumble"
+	"github.com/jedib0t/go-pretty/v6/table"
+	"google.golang.org/protobuf/proto"
 )
 
 // NetstatCmd - Display active network connections on the remote system
-func NetstatCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func NetstatCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	listening, _ := cmd.Flags().GetBool("listen")
-	ip4, _ := cmd.Flags().GetBool("ip4")
-	ip6, _ := cmd.Flags().GetBool("ip6")
-	tcp, _ := cmd.Flags().GetBool("tcp")
-	udp, _ := cmd.Flags().GetBool("udp")
-	numeric, _ := cmd.Flags().GetBool("numeric")
+	listening := ctx.Flags.Bool("listen")
+	ip4 := ctx.Flags.Bool("ip4")
+	ip6 := ctx.Flags.Bool("ip6")
+	tcp := ctx.Flags.Bool("tcp")
+	udp := ctx.Flags.Bool("udp")
+	numeric := ctx.Flags.Bool("numeric")
 
 	implantPID := getPID(session, beacon)
 	activeC2 := getActiveC2(session, beacon)
 
 	netstat, err := con.Rpc.Netstat(context.Background(), &sliverpb.NetstatReq{
-		Request:   con.ActiveTarget.Request(cmd),
+		Request:   con.ActiveTarget.Request(ctx),
 		TCP:       tcp,
 		UDP:       udp,
 		Listening: listening,
@@ -77,7 +76,7 @@ func NetstatCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 	}
 }
 
-func PrintNetstat(netstat *sliverpb.Netstat, implantPID int32, activeC2 string, numeric bool, con *console.SliverClient) {
+func PrintNetstat(netstat *sliverpb.Netstat, implantPID int32, activeC2 string, numeric bool, con *console.SliverConsoleClient) {
 	lookup := func(skaddr *sliverpb.SockTabEntry_SockAddr) string {
 		addr := skaddr.Ip
 		names, err := net.LookupAddr(addr)

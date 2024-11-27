@@ -3,8 +3,6 @@
 package sleep
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -32,13 +30,13 @@ func (s *Sleeper) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(2, &s.allWakers)
 }
 
-func (s *Sleeper) afterLoad(context.Context) {}
+func (s *Sleeper) afterLoad() {}
 
 // +checklocksignore
-func (s *Sleeper) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (s *Sleeper) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(1, &s.localList)
 	stateSourceObject.Load(2, &s.allWakers)
-	stateSourceObject.LoadValue(0, new(*Waker), func(y any) { s.loadSharedList(y.(*Waker)) })
+	stateSourceObject.LoadValue(0, new(*Waker), func(y interface{}) { s.loadSharedList(y.(*Waker)) })
 }
 
 func (w *Waker) StateTypeName() string {
@@ -65,13 +63,13 @@ func (w *Waker) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(2, &w.allWakersNext)
 }
 
-func (w *Waker) afterLoad(context.Context) {}
+func (w *Waker) afterLoad() {}
 
 // +checklocksignore
-func (w *Waker) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (w *Waker) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(1, &w.next)
 	stateSourceObject.Load(2, &w.allWakersNext)
-	stateSourceObject.LoadValue(0, new(wakerState), func(y any) { w.loadS(y.(wakerState)) })
+	stateSourceObject.LoadValue(0, new(wakerState), func(y interface{}) { w.loadS(y.(wakerState)) })
 }
 
 func init() {

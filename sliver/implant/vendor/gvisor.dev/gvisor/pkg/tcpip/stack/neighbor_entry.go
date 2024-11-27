@@ -16,6 +16,7 @@ package stack
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -33,7 +34,7 @@ type NeighborEntry struct {
 	Addr      tcpip.Address
 	LinkAddr  tcpip.LinkAddress
 	State     NeighborState
-	UpdatedAt tcpip.MonotonicTime
+	UpdatedAt time.Time
 }
 
 // NeighborState defines the state of a NeighborEntry within the Neighbor
@@ -96,7 +97,7 @@ type neighborEntry struct {
 	nudState *NUDState
 
 	mu struct {
-		neighborEntryRWMutex
+		sync.RWMutex
 
 		neigh NeighborEntry
 
@@ -140,7 +141,7 @@ func newStaticNeighborEntry(cache *neighborCache, addr tcpip.Address, linkAddr t
 		Addr:      addr,
 		LinkAddr:  linkAddr,
 		State:     Static,
-		UpdatedAt: cache.nic.stack.clock.NowMonotonic(),
+		UpdatedAt: cache.nic.stack.clock.Now(),
 	}
 	n := &neighborEntry{
 		cache:    cache,
@@ -229,10 +230,8 @@ func (e *neighborEntry) cancelTimerLocked() {
 //
 // Precondition: e.mu MUST be locked.
 func (e *neighborEntry) removeLocked() {
-	e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.NowMonotonic()
+	e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.Now()
 	e.dispatchRemoveEventLocked()
-	// Set state to unknown to invalidate this entry if it's cached in a Route.
-	e.setStateLocked(Unknown)
 	e.cancelTimerLocked()
 	// TODO(https://gvisor.dev/issues/5583): test the case where this function is
 	// called during resolution; that can happen in at least these scenarios:
@@ -253,7 +252,7 @@ func (e *neighborEntry) setStateLocked(next NeighborState) {
 
 	prev := e.mu.neigh.State
 	e.mu.neigh.State = next
-	e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.NowMonotonic()
+	e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.Now()
 	config := e.nudState.Config()
 
 	switch next {
@@ -317,7 +316,7 @@ func (e *neighborEntry) setStateLocked(next NeighborState) {
 			timer: e.cache.nic.stack.Clock().AfterFunc(immediateDuration, func() {
 				var err tcpip.Error = &tcpip.ErrTimeout{}
 				if remaining != 0 {
-					err = e.cache.linkRes.LinkAddressRequest(addr, tcpip.Address{} /* localAddr */, linkAddr)
+					err = e.cache.linkRes.LinkAddressRequest(addr, "" /* localAddr */, linkAddr)
 				}
 
 				e.mu.Lock()
@@ -361,7 +360,7 @@ func (e *neighborEntry) handlePacketQueuedLocked(localAddr tcpip.Address) {
 	case Unknown, Unreachable:
 		prev := e.mu.neigh.State
 		e.mu.neigh.State = Incomplete
-		e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.NowMonotonic()
+		e.mu.neigh.UpdatedAt = e.cache.nic.stack.clock.Now()
 
 		switch prev {
 		case Unknown:
@@ -505,7 +504,6 @@ func (e *neighborEntry) handleConfirmationLocked(linkAddr tcpip.LinkAddress, fla
 			// "If the link layer has addresses and no Target Link-Layer Address
 			// option is included, the receiving node SHOULD silently discard the
 			// received advertisement." - RFC 4861 section 7.2.5
-			e.cache.nic.stats.neighbor.droppedInvalidLinkAddressConfirmations.Increment()
 			break
 		}
 
@@ -569,8 +567,8 @@ func (e *neighborEntry) handleConfirmationLocked(linkAddr tcpip.LinkAddress, fla
 			//
 			// TODO(gvisor.dev/issue/4085): Remove the special casing we do for IPv6
 			// here.
-			ep := e.cache.nic.getNetworkEndpoint(header.IPv6ProtocolNumber)
-			if ep == nil {
+			ep, ok := e.cache.nic.networkEndpoints[header.IPv6ProtocolNumber]
+			if !ok {
 				panic(fmt.Sprintf("have a neighbor entry for an IPv6 router but no IPv6 network endpoint"))
 			}
 
@@ -588,59 +586,24 @@ func (e *neighborEntry) handleConfirmationLocked(linkAddr tcpip.LinkAddress, fla
 	}
 }
 
-// handleUpperLevelConfirmation processes an incoming upper-level protocol
+// handleUpperLevelConfirmationLocked processes an incoming upper-level protocol
 // (e.g. TCP acknowledgements) reachability confirmation.
-func (e *neighborEntry) handleUpperLevelConfirmation() {
-	tryHandleConfirmation := func() bool {
-		switch e.mu.neigh.State {
-		case Stale, Delay, Probe:
-			return true
-		case Reachable:
-			// Avoid setStateLocked; Timer.Reset is cheaper.
-			//
-			// Note that setting the timer does not need to be protected by the
-			// entry's write lock since we do not modify the timer pointer, but the
-			// time the timer should fire. The timer should have internal locks to
-			// synchronize timer resets changes with the clock.
-			e.mu.timer.timer.Reset(e.nudState.ReachableTime())
-			return false
-		case Unknown, Incomplete, Unreachable, Static:
-			// Do nothing
-			return false
-		default:
-			panic(fmt.Sprintf("Invalid cache entry state: %s", e.mu.neigh.State))
-		}
-	}
-
-	e.mu.RLock()
-	needsTransition := tryHandleConfirmation()
-	e.mu.RUnlock()
-	if !needsTransition {
-		return
-	}
-
-	// We need to transition the neighbor to Reachable so take the write lock and
-	// perform the transition, but only if we still need the transition since the
-	// state could have changed since we dropped the read lock above.
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if needsTransition := tryHandleConfirmation(); needsTransition {
+//
+// Precondition: e.mu MUST be locked.
+func (e *neighborEntry) handleUpperLevelConfirmationLocked() {
+	switch e.mu.neigh.State {
+	case Stale, Delay, Probe:
 		e.setStateLocked(Reachable)
 		e.dispatchChangeEventLocked()
-	}
-}
 
-// getRemoteLinkAddress returns the entry's link address and whether that link
-// address is valid.
-func (e *neighborEntry) getRemoteLinkAddress() (tcpip.LinkAddress, bool) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	switch e.mu.neigh.State {
-	case Reachable, Static, Delay, Probe:
-		return e.mu.neigh.LinkAddr, true
-	case Unknown, Incomplete, Unreachable, Stale:
-		return "", false
+	case Reachable:
+		// Avoid setStateLocked; Timer.Reset is cheaper.
+		e.mu.timer.timer.Reset(e.nudState.ReachableTime())
+
+	case Unknown, Incomplete, Unreachable, Static:
+		// Do nothing
+
 	default:
-		panic(fmt.Sprintf("invalid state for neighbor entry %v: %v", e.mu.neigh, e.mu.neigh.State))
+		panic(fmt.Sprintf("Invalid cache entry state: %s", e.mu.neigh.State))
 	}
 }

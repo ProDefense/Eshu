@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 )
@@ -84,7 +85,7 @@ type IPTables struct {
 
 	reaper tcpip.Timer
 
-	mu ipTablesRWMutex
+	mu sync.RWMutex
 	// v4Tables and v6tables map tableIDs to tables. They hold builtin
 	// tables only, not user tables.
 	//
@@ -239,7 +240,7 @@ type IPHeaderFilter struct {
 //
 // Preconditions: pkt.NetworkHeader is set and is at least of the minimal IPv4
 // or IPv6 header length.
-func (fl IPHeaderFilter) match(pkt PacketBufferPtr, hook Hook, inNicName, outNicName string) bool {
+func (fl IPHeaderFilter) match(pkt *PacketBuffer, hook Hook, inNicName, outNicName string) bool {
 	// Extract header fields.
 	var (
 		transProto tcpip.TransportProtocolNumber
@@ -316,10 +317,10 @@ func matchIfName(nicName string, ifName string, invert bool) bool {
 // NetworkProtocol returns the protocol (IPv4 or IPv6) on to which the header
 // applies.
 func (fl IPHeaderFilter) NetworkProtocol() tcpip.NetworkProtocolNumber {
-	switch fl.Src.BitLen() {
-	case header.IPv4AddressSizeBits:
+	switch len(fl.Src) {
+	case header.IPv4AddressSize:
 		return header.IPv4ProtocolNumber
-	case header.IPv6AddressSizeBits:
+	case header.IPv6AddressSize:
 		return header.IPv6ProtocolNumber
 	}
 	panic(fmt.Sprintf("invalid address in IPHeaderFilter: %s", fl.Src))
@@ -328,11 +329,8 @@ func (fl IPHeaderFilter) NetworkProtocol() tcpip.NetworkProtocolNumber {
 // filterAddress returns whether addr matches the filter.
 func filterAddress(addr, mask, filterAddr tcpip.Address, invert bool) bool {
 	matches := true
-	addrBytes := addr.AsSlice()
-	maskBytes := mask.AsSlice()
-	filterBytes := filterAddr.AsSlice()
-	for i := range filterAddr.AsSlice() {
-		if addrBytes[i]&maskBytes[i] != filterBytes[i] {
+	for i := range filterAddr {
+		if addr[i]&mask[i] != filterAddr[i] {
 			matches = false
 			break
 		}
@@ -347,7 +345,7 @@ type Matcher interface {
 	// used for suspicious packets.
 	//
 	// Precondition: packet.NetworkHeader is set.
-	Match(hook Hook, packet PacketBufferPtr, inputInterfaceName, outputInterfaceName string) (matches bool, hotdrop bool)
+	Match(hook Hook, packet *PacketBuffer, inputInterfaceName, outputInterfaceName string) (matches bool, hotdrop bool)
 }
 
 // A Target is the interface for taking an action for a packet.
@@ -355,5 +353,5 @@ type Target interface {
 	// Action takes an action on the packet and returns a verdict on how
 	// traversal should (or should not) continue. If the return value is
 	// Jump, it also returns the index of the rule to jump to.
-	Action(PacketBufferPtr, Hook, *Route, AddressableEndpoint) (RuleVerdict, int)
+	Action(*PacketBuffer, Hook, *Route, AddressableEndpoint) (RuleVerdict, int)
 }

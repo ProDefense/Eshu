@@ -23,19 +23,20 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// MemfilesAddCmd - Add memfile.
-func MemfilesAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// MemfilesAddCmd - Add memfile
+func MemfilesAddCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
 	memfilesAdd, err := con.Rpc.MemfilesAdd(context.Background(), &sliverpb.MemfilesAddReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
@@ -56,8 +57,8 @@ func MemfilesAddCmd(cmd *cobra.Command, con *console.SliverClient, args []string
 	}
 }
 
-// PrintAddMemfile - Print the memfiles response.
-func PrintAddMemfile(memfilesAdd *sliverpb.MemfilesAdd, con *console.SliverClient) {
+// PrintAddMemfile - Print the memfiles response
+func PrintAddMemfile(memfilesAdd *sliverpb.MemfilesAdd, con *console.SliverConsoleClient) {
 	if memfilesAdd.Response != nil && memfilesAdd.Response.Err != "" {
 		con.PrintErrorf("%s\n", memfilesAdd.Response.Err)
 		return

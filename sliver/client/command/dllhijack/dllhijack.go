@@ -21,12 +21,11 @@ package dllhijack
 import (
 	"context"
 	"fmt"
-	"os"
-
-	"github.com/spf13/cobra"
+	"io/ioutil"
 
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"github.com/desertbit/grumble"
 )
 
 // dllhijack --ref-path c:\windows\system32\msasn1.dll --file /tmp/runner.dll TARGET_PATH
@@ -34,7 +33,7 @@ import (
 // dllhijack --ref-path c:\windows\system32\msasn1.dll --ref-file /tmp/ref.dll --profile dll  TARGET_PATH
 
 // DllHijackCmd -- implements the dllhijack command
-func DllHijackCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func DllHijackCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	var (
 		localRefData  []byte
 		targetDLLData []byte
@@ -45,12 +44,11 @@ func DllHijackCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 		return
 	}
 
-	targetPath := args[0]
-
-	referencePath, _ := cmd.Flags().GetString("reference-path")
-	localFile, _ := cmd.Flags().GetString("file")
-	profileName, _ := cmd.Flags().GetString("profile")
-	localReferenceFilePath, _ := cmd.Flags().GetString("reference-file")
+	targetPath := ctx.Args.String("target-path")
+	referencePath := ctx.Flags.String("reference-path")
+	localFile := ctx.Flags.String("file")
+	profileName := ctx.Flags.String("profile")
+	localReferenceFilePath := ctx.Flags.String("reference-file")
 
 	if referencePath == "" {
 		con.PrintErrorf("Please provide a path to the reference DLL on the target system\n")
@@ -58,7 +56,7 @@ func DllHijackCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 	}
 
 	if localReferenceFilePath != "" {
-		localRefData, err = os.ReadFile(localReferenceFilePath)
+		localRefData, err = ioutil.ReadFile(localReferenceFilePath)
 		if err != nil {
 			con.PrintErrorf("Could not load the reference file from the client: %s\n", err)
 			return
@@ -70,7 +68,7 @@ func DllHijackCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 			con.PrintErrorf("please use either --profile or --File")
 			return
 		}
-		targetDLLData, err = os.ReadFile(localFile)
+		targetDLLData, err = ioutil.ReadFile(localFile)
 		if err != nil {
 			con.PrintErrorf("Error: %s\n", err)
 			return
@@ -85,7 +83,7 @@ func DllHijackCmd(cmd *cobra.Command, con *console.SliverClient, args []string) 
 		TargetLocation:   targetPath,
 		ReferenceDLL:     localRefData,
 		TargetDLL:        targetDLLData,
-		Request:          con.ActiveTarget.Request(cmd),
+		Request:          con.ActiveTarget.Request(ctx),
 		ProfileName:      profileName,
 	})
 	ctrl <- true

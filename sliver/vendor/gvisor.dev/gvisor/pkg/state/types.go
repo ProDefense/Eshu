@@ -180,7 +180,7 @@ func (tbd *typeDecodeDatabase) LookupType(id typeID) reflect.Type {
 		typ, ok = primitiveTypeDatabase[name]
 		if !ok && name == interfaceType {
 			// Matches the built-in interface type.
-			var i any
+			var i interface{}
 			return reflect.TypeOf(&i).Elem()
 		}
 		if !ok {
@@ -198,7 +198,7 @@ var singleFieldOrder = []int{0}
 // Lookup looks up or registers the given object.
 //
 // First, the typeID is searched to see if this has already been appropriately
-// reconciled. If no, then a reconciliation will take place that may result in a
+// reconciled. If no, then a reconcilation will take place that may result in a
 // field ordering. If a nil reconciledTypeEntry is returned from this method,
 // then the object does not support the Type interface.
 //
@@ -323,14 +323,6 @@ var globalTypeDatabase = map[string]reflect.Type{}
 
 // reverseTypeDatabase is a reverse mapping.
 var reverseTypeDatabase = map[reflect.Type]string{}
-
-// Release releases references to global type databases.
-// Must only be called in contexts where they will definitely never be used,
-// in order to save memory.
-func Release() {
-	globalTypeDatabase = nil
-	reverseTypeDatabase = nil
-}
 
 // Register registers a type.
 //

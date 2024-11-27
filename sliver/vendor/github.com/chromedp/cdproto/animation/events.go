@@ -22,10 +22,3 @@ type EventAnimationCreated struct {
 type EventAnimationStarted struct {
 	Animation *Animation `json:"animation"` // Animation that was started.
 }
-
-// EventAnimationUpdated event for animation that has been updated.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Animation#event-animationUpdated
-type EventAnimationUpdated struct {
-	Animation *Animation `json:"animation"` // Animation that was updated.
-}

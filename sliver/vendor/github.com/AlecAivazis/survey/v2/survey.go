@@ -60,7 +60,6 @@ func defaultAskOptions() *AskOptions {
 			ShowCursor:       false,
 			RemoveSelectAll:  false,
 			RemoveSelectNone: false,
-			HideCharacter:    '*',
 		},
 	}
 }
@@ -123,7 +122,6 @@ type PromptConfig struct {
 	ShowCursor       bool
 	RemoveSelectAll  bool
 	RemoveSelectNone bool
-	HideCharacter    rune
 }
 
 // Prompt is the primary interface for the objects that can take user input
@@ -256,17 +254,6 @@ func WithShowCursor(ShowCursor bool) AskOpt {
 	}
 }
 
-// WithHideCharacter sets the default character shown instead of the password for password inputs
-func WithHideCharacter(char rune) AskOpt {
-	return func(options *AskOptions) error {
-		// set the hide character
-		options.PromptConfig.HideCharacter = char
-
-		// nothing went wrong
-		return nil
-	}
-}
-
 /*
 AskOne performs the prompt for a single prompt and asks for validation if required.
 Response types should be something that can be casted from the response type designated
@@ -278,6 +265,7 @@ in the documentation. For example:
 	}
 
 	survey.AskOne(prompt, &name)
+
 */
 func AskOne(p Prompt, response interface{}, opts ...AskOpt) error {
 	err := Ask([]*Question{{Prompt: p}}, response, opts...)

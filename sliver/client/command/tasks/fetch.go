@@ -20,6 +20,7 @@ package tasks
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -35,18 +36,16 @@ import (
 	"github.com/bishopfox/sliver/client/command/registry"
 	"github.com/bishopfox/sliver/client/command/settings"
 	"github.com/bishopfox/sliver/client/console"
-	"github.com/bishopfox/sliver/client/constants"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util"
+	"github.com/desertbit/grumble"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"google.golang.org/protobuf/proto"
 )
 
-// TasksFetchCmd - Manage beacon tasks.
-func TasksFetchCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// TasksFetchCmd - Manage beacon tasks
+func TasksFetchCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	beacon := con.ActiveTarget.GetBeaconInteractive()
 	if beacon == nil {
 		return
@@ -62,10 +61,7 @@ func TasksFetchCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 		return
 	}
 
-	var idArg string
-	if len(args) > 0 {
-		idArg = args[0]
-	}
+	idArg := ctx.Args.String("id")
 	if idArg != "" {
 		tasks = filterTasksByID(idArg, tasks)
 		if len(tasks) == 0 {
@@ -74,7 +70,7 @@ func TasksFetchCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 		}
 	}
 
-	filter, _ := cmd.Flags().GetString("filter")
+	filter := ctx.Flags.String("filter")
 	if filter != "" {
 		tasks = filterTasksByTaskType(filter, tasks)
 		if len(tasks) == 0 {
@@ -122,8 +118,8 @@ func filterTasksByTaskType(taskType string, tasks []*clientpb.BeaconTask) []*cli
 	return filteredTasks
 }
 
-// PrintTask - Print the details of a beacon task.
-func PrintTask(task *clientpb.BeaconTask, con *console.SliverClient) {
+// PrintTask - Print the details of a beacon task
+func PrintTask(task *clientpb.BeaconTask, con *console.SliverConsoleClient) {
 	tw := table.NewWriter()
 	tw.SetStyle(settings.GetTableWithBordersStyle(con))
 	tw.AppendRow(table.Row{console.Bold + "Beacon Task" + console.Normal, task.ID})
@@ -169,8 +165,8 @@ func emojiState(state string) string {
 	}
 }
 
-// Decode and render message specific content.
-func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
+// Decode and render message specific content
+func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverConsoleClient) {
 	reqEnvelope := &sliverpb.Envelope{}
 	proto.Unmarshal(task.Request, reqEnvelope)
 	switch reqEnvelope.Type {
@@ -227,7 +223,7 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 			con.PrintErrorf("Failed to decode task response: %s\n", err)
 			return
 		}
-		extensions.PrintExtOutput("", "", nil, callExtension, con)
+		extensions.PrintExtOutput("", "", callExtension, con)
 
 	// ---------------------
 	// Exec commands
@@ -249,16 +245,15 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 			hostname = beacon.Hostname
 		}
 		assemblyPath := ""
-
-		f := pflag.NewFlagSet(constants.ExecuteAssemblyStr, pflag.ContinueOnError)
-		f.BoolP("save", "s", false, "save output to file")
-		f.BoolP("loot", "X", false, "save output as loot")
-		f.StringP("name", "n", "", "name to assign loot (optional)")
-
-		assemblyCmd := &cobra.Command{Use: constants.ExecuteAssemblyStr}
-		assemblyCmd.Flags().AddFlagSet(f)
-
-		exec.HandleExecuteAssemblyResponse(execAssembly, assemblyPath, hostname, assemblyCmd, con)
+		ctx := &grumble.Context{
+			Command: &grumble.Command{Name: "execute-assembly"},
+			Flags: grumble.FlagMap{
+				"save": &grumble.FlagMapItem{Value: false, IsDefault: true},
+				"loot": &grumble.FlagMapItem{Value: false, IsDefault: true},
+				"name": &grumble.FlagMapItem{Value: "", IsDefault: true},
+			},
+		}
+		exec.HandleExecuteAssemblyResponse(execAssembly, assemblyPath, hostname, ctx, con)
 
 	// execute-shellcode
 	case sliverpb.MsgTaskReq:
@@ -283,19 +278,20 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 			con.PrintErrorf("Failed to decode task response: %s\n", err)
 			return
 		}
-
-		f := pflag.NewFlagSet(constants.ExecuteStr, pflag.ContinueOnError)
-		f.BoolP("output", "o", true, "capture command output")
-		f.BoolP("loot", "X", false, "save output as loot")
-		f.BoolP("ignore-stderr", "S", false, "don't print STDERR output")
-		f.StringP("stdout", "O", "", "remote path to redirect STDOUT to")
-		f.StringP("stderr", "E", "", "remote path to redirect STDERR to")
-
-		execCmd := &cobra.Command{Use: constants.ExecuteStr}
-		execCmd.Flags().AddFlagSet(f)
-		execCmd.SetArgs(append([]string{execReq.Path}, execReq.Args...))
-
-		exec.PrintExecute(execResult, execCmd, con)
+		ctx := &grumble.Context{
+			Flags: grumble.FlagMap{
+				"ignore-stderr": &grumble.FlagMapItem{Value: false},
+				"loot":          &grumble.FlagMapItem{Value: false},
+				"stdout":        &grumble.FlagMapItem{Value: ""},
+				"stderr":        &grumble.FlagMapItem{Value: ""},
+				"output":        &grumble.FlagMapItem{Value: true},
+			},
+			Args: grumble.ArgMap{
+				"command":   &grumble.ArgMapItem{Value: execReq.Path},
+				"arguments": &grumble.ArgMapItem{Value: execReq.Args},
+			},
+		}
+		exec.PrintExecute(execResult, ctx, con)
 
 	case sliverpb.MsgSideloadReq:
 		sideload := &sliverpb.Sideload{}
@@ -309,15 +305,14 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 		if beacon != nil {
 			hostname = beacon.Hostname
 		}
-
-		f := pflag.NewFlagSet(constants.SideloadStr, pflag.ContinueOnError)
-		f.BoolP("save", "s", false, "save output to file")
-		f.BoolP("loot", "X", false, "save output as loot")
-
-		sideloadCmd := &cobra.Command{Use: constants.SideloadStr}
-		sideloadCmd.Flags().AddFlagSet(f)
-
-		exec.HandleSideloadResponse(sideload, "", hostname, sideloadCmd, con)
+		ctx := &grumble.Context{
+			Command: &grumble.Command{Name: "sideload"},
+			Flags: grumble.FlagMap{
+				"save": &grumble.FlagMapItem{Value: false},
+				"loot": &grumble.FlagMapItem{Value: false},
+			},
+		}
+		exec.HandleSideloadResponse(sideload, "", hostname, ctx, con)
 
 	case sliverpb.MsgSpawnDllReq:
 		spawnDll := &sliverpb.SpawnDll{}
@@ -331,15 +326,14 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 		if beacon != nil {
 			hostname = beacon.Hostname
 		}
-
-		f := pflag.NewFlagSet(constants.SpawnDllStr, pflag.ContinueOnError)
-		f.BoolP("save", "s", false, "save output to file")
-		f.BoolP("loot", "X", false, "save output as loot")
-
-		spawnDllCmd := &cobra.Command{Use: constants.SpawnDllStr}
-		spawnDllCmd.Flags().AddFlagSet(f)
-
-		exec.HandleSpawnDLLResponse(spawnDll, "", hostname, spawnDllCmd, con)
+		ctx := &grumble.Context{
+			Command: &grumble.Command{Name: "spawndll"},
+			Flags: grumble.FlagMap{
+				"save": &grumble.FlagMapItem{Value: false},
+				"loot": &grumble.FlagMapItem{Value: false},
+			},
+		}
+		exec.HandleSpawnDLLResponse(spawnDll, "", hostname, ctx, con)
 
 	case sliverpb.MsgSSHCommandReq:
 		sshCommand := &sliverpb.SSHCommand{}
@@ -379,13 +373,12 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 			con.PrintErrorf("Failed to decode task response: %s\n", err)
 			return
 		}
-
-		f := pflag.NewFlagSet("ls", pflag.ContinueOnError)
-		f.BoolP("reverse", "r", false, "reverse sort order")
-		f.BoolP("modified", "m", false, "sort by modified time")
-		f.BoolP("size", "s", false, "sort by size")
-
-		filesystem.PrintLs(ls, f, con)
+		flags := grumble.FlagMap{
+			"reverse":  &grumble.FlagMapItem{Value: false},
+			"modified": &grumble.FlagMapItem{Value: false},
+			"size":     &grumble.FlagMapItem{Value: false},
+		}
+		filesystem.PrintLs(ls, flags, con)
 
 	case sliverpb.MsgMvReq:
 		mv := &sliverpb.Mv{}
@@ -619,17 +612,18 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 			con.PrintErrorf("Failed to get beacon: %s\n", err)
 			return
 		}
-
-		f := pflag.NewFlagSet("ps", pflag.ContinueOnError) // Create the flag set.
-		f.IntP("pid", "p", -1, "filter based on pid")
-		f.StringP("exe", "e", "", "filter based on executable name")
-		f.StringP("owner", "o", "", "filter based on owner")
-		f.BoolP("print-cmdline", "c", true, "print command line arguments")
-		f.BoolP("overflow", "O", false, "overflow terminal width (display truncated rows)")
-		f.IntP("skip-pages", "S", 0, "skip the first n page(s)")
-		f.BoolP("tree", "T", false, "print process tree")
-
-		processes.PrintPS(beacon.OS, ps, true, f, con)
+		ctx := &grumble.Context{
+			Flags: grumble.FlagMap{
+				"pid":           &grumble.FlagMapItem{Value: -1},
+				"exe":           &grumble.FlagMapItem{Value: ""},
+				"owner":         &grumble.FlagMapItem{Value: ""},
+				"overflow":      &grumble.FlagMapItem{Value: false},
+				"skip-pages":    &grumble.FlagMapItem{Value: 0},
+				"print-cmdline": &grumble.FlagMapItem{Value: true},
+				"tree":          &grumble.FlagMapItem{Value: false},
+			},
+		}
+		processes.PrintPS(beacon.OS, ps, true, ctx, con)
 
 	case sliverpb.MsgTerminateReq:
 		terminate := &sliverpb.Terminate{}
@@ -741,7 +735,7 @@ func renderTaskResponse(task *clientpb.BeaconTask, con *console.SliverClient) {
 	}
 }
 
-func taskResponseDownload(download *sliverpb.Download, con *console.SliverClient) {
+func taskResponseDownload(download *sliverpb.Download, con *console.SliverConsoleClient) {
 	const (
 		dump   = "Dump Contents"
 		saveTo = "Save to File ..."
@@ -764,7 +758,7 @@ func taskResponseDownload(download *sliverpb.Download, con *console.SliverClient
 	}
 }
 
-func promptSaveToFile(data []byte, con *console.SliverClient) {
+func promptSaveToFile(data []byte, con *console.SliverConsoleClient) {
 	saveTo := ""
 	saveToPrompt := &survey.Input{Message: "Save to: "}
 	err := survey.AskOne(saveToPrompt, &saveTo)
@@ -780,7 +774,7 @@ func promptSaveToFile(data []byte, con *console.SliverClient) {
 			return
 		}
 	}
-	err = os.WriteFile(saveTo, data, 0o600)
+	err = ioutil.WriteFile(saveTo, data, 0600)
 	if err != nil {
 		con.PrintErrorf("Failed to save file: %s\n", err)
 		return

@@ -43,12 +43,7 @@ func GetUUID() string {
 			// {{end}}
 			return UUIDFromMAC()
 		}
-		if 37 <= len(uuidStr) {
-			// {{if .Config.Debug}}
-			log.Printf("Registry host uuid value too short")
-			// {{end}}
-			return uuidStr[1:37]
-		}
+		return uuidStr[1:37]
 	} else {
 		// {{if .Config.Debug}}
 		log.Printf("Failed to read reg key: %s", err)

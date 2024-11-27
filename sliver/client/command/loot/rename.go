@@ -22,15 +22,14 @@ import (
 	"context"
 
 	"github.com/AlecAivazis/survey/v2"
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"github.com/desertbit/grumble"
 )
 
 // LootRenameCmd - Rename a piece of loot
-func LootRenameCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	loot, err := SelectLoot(cmd, con.Rpc)
+func LootRenameCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	loot, err := SelectLoot(ctx, con.Rpc)
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
@@ -41,8 +40,8 @@ func LootRenameCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 	survey.AskOne(prompt, &newName)
 
 	loot, err = con.Rpc.LootUpdate(context.Background(), &clientpb.Loot{
-		ID:   loot.ID,
-		Name: newName,
+		LootID: loot.LootID,
+		Name:   newName,
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)

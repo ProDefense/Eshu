@@ -28,8 +28,8 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/rsteube/carapace"
-	"github.com/spf13/cobra"
+
+	"github.com/desertbit/grumble"
 )
 
 const (
@@ -37,18 +37,18 @@ const (
 	defaultMimeType = "application/octet-stream"
 )
 
-// WebsitesCmd - Manage websites.
-func WebsitesCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	if len(args) > 0 {
-		websiteName := args[0]
-		ListWebsiteContent(websiteName, con)
+// WebsitesCmd - Manage websites
+func WebsitesCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	websiteName := ctx.Args.String("name")
+	if websiteName == "" {
+		ListWebsites(ctx, con)
 	} else {
-		ListWebsites(cmd, con, args)
+		ListWebsiteContent(websiteName, con)
 	}
 }
 
-// ListWebsites - Display a list of websites.
-func ListWebsites(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ListWebsites - Display a list of websites
+func ListWebsites(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	websites, err := con.Rpc.Websites(context.Background(), &commonpb.Empty{})
 	if err != nil {
 		con.PrintErrorf("Failed to list websites %s", err)
@@ -65,8 +65,8 @@ func ListWebsites(cmd *cobra.Command, con *console.SliverClient, args []string) 
 	}
 }
 
-// ListWebsiteContent - List the static contents of a website.
-func ListWebsiteContent(websiteName string, con *console.SliverClient) {
+// ListWebsiteContent - List the static contents of a website
+func ListWebsiteContent(websiteName string, con *console.SliverConsoleClient) {
 	website, err := con.Rpc.Website(context.Background(), &clientpb.Website{
 		Name: websiteName,
 	})
@@ -82,7 +82,7 @@ func ListWebsiteContent(websiteName string, con *console.SliverClient) {
 }
 
 // PrintWebsite - Print a website and its contents, paths, etc.
-func PrintWebsite(web *clientpb.Website, con *console.SliverClient) {
+func PrintWebsite(web *clientpb.Website, con *console.SliverConsoleClient) {
 	con.Println(console.Clearln + console.Info + web.Name)
 	con.Println()
 	tw := table.NewWriter()
@@ -107,26 +107,4 @@ func PrintWebsite(web *clientpb.Website, con *console.SliverClient) {
 		})
 	}
 	con.Println(tw.Render())
-}
-
-// WebsiteNameCompleter completes the names of available websites.
-func WebsiteNameCompleter(con *console.SliverClient) carapace.Action {
-	return carapace.ActionCallback(func(c carapace.Context) carapace.Action {
-		results := make([]string, 0)
-
-		websites, err := con.Rpc.Websites(context.Background(), &commonpb.Empty{})
-		if err != nil {
-			return carapace.ActionMessage("Failed to list websites %s", err)
-		}
-
-		for _, ws := range websites.Websites {
-			results = append(results, ws.Name)
-		}
-
-		if len(results) == 0 {
-			return carapace.ActionMessage("no available websites")
-		}
-
-		return carapace.ActionValues(results...).Tag("websites").Usage("website name")
-	})
 }

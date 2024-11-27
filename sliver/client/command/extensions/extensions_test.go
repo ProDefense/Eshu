@@ -1,10 +1,5 @@
 package extensions
 
-import (
-	"encoding/json"
-	"testing"
-)
-
 /*
 	Sliver Implant Framework
 	Copyright (C) 2021  Bishop Fox
@@ -23,25 +18,26 @@ import (
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+import (
+	"encoding/json"
+	"testing"
+)
+
 const (
 	sample1 = `{
 	"name": "test1",
+	"command_name": "test1",
 	"version": "1.0.0",
 	"extension_author": "test",
 	"original_author": "test",
 	"repo_url": "https://example.com/",
-	"commands":[
-	{
-		"command_name": "test1",
-		"help": "some help",
-		"files": [
-			{
-				"os": "windows",
-				"arch": "amd64",
-				"path": "foo/test1.dll"
-			}
-		]
-	}
+	"help": "some help",
+	"files": [
+		{
+			"os": "windows",
+			"arch": "amd64",
+			"path": "foo/test1.dll"
+		}
 	]
 }`
 
@@ -57,60 +53,6 @@ const (
 		}
 	]
 }`
-	sample3 = `{
-	"name": "test3",
-	"version": "1.0.0",
-	"extension_author": "test",
-	"original_author": "test",
-	"repo_url": "https://example.com/",
-	"commands": [
-		{
-			"command_name": "test3",
-			"help": "some help",
-			"files": [
-				{
-					"os": "windows",
-					"arch": "amd64",
-					"path": "foo/test1.dll"
-				}
-			]
-		}
-	]
-}`
-
-	multicmd = `{
-		"name": "example-multientry",
-		"version": "0.0.0",
-		"extension_author": "cs",
-		"original_author": "cs",
-		"repo_url": "no",
-		"commands": [
-			{
-				"command_name": "startw",
-				"help": "startw",
-				"entrypoint": "StartW",
-				"files": [
-					{
-						"os": "windows",
-						"arch": "amd64",
-						"path": "ex.dll"
-					}
-				]
-			},
-			{
-				"command_name": "Test2",
-				"help": "startw",
-				"entrypoint": "Test2",
-				"files": [
-					{
-						"os": "windows",
-						"arch": "amd64",
-						"path": "ex.dll"
-					}
-				]
-			}
-		]
-	}`
 )
 
 func TestParseExtensionManifest(t *testing.T) {
@@ -121,7 +63,9 @@ func TestParseExtensionManifest(t *testing.T) {
 	if extManifest.Name != "test1" {
 		t.Errorf("Expected extension name 'test1', got '%s'", extManifest.Name)
 	}
-
+	if extManifest.CommandName != "test1" {
+		t.Errorf("Expected extension command name 'test1', got '%s'", extManifest.CommandName)
+	}
 	if extManifest.Version != "1.0.0" {
 		t.Errorf("Expected extension version '1.0.0', got '%s'", extManifest.Version)
 	}
@@ -134,86 +78,67 @@ func TestParseExtensionManifest(t *testing.T) {
 	if extManifest.RepoURL != "https://example.com/" {
 		t.Errorf("Expected repo URL 'https://example.com/', got '%s'", extManifest.RepoURL)
 	}
-	for _, extCmd := range extManifest.ExtCommand { //should only be a single manfiest here, so should pass
-		if extCmd.CommandName != "test1" {
-			t.Errorf("Expected extension command name 'test1', got '%s'", extCmd.CommandName)
-		}
-		if extCmd.Help != "some help" {
-			t.Errorf("Expected help 'some help', got '%s'", extCmd.Help)
-		}
-		if len(extCmd.Files) != 1 {
-			t.Errorf("Expected 1 file, got %d", len(extCmd.Files))
-		}
-		if extCmd.Files[0].OS != "windows" {
-			t.Errorf("Expected OS 'windows', got '%s'", extCmd.Files[0].OS)
-		}
-		if extCmd.Files[0].Arch != "amd64" {
-			t.Errorf("Expected Arch 'amd64', got '%s'", extCmd.Files[0].Arch)
-		}
-		if extCmd.Files[0].Path != "/foo/test1.dll" {
-			t.Errorf("Expected path '/foo/test1.dll', got '%s'", extCmd.Files[0].Path)
-		}
+	if extManifest.Help != "some help" {
+		t.Errorf("Expected help 'some help', got '%s'", extManifest.Help)
+	}
+	if len(extManifest.Files) != 1 {
+		t.Errorf("Expected 1 file, got %d", len(extManifest.Files))
+	}
+	if extManifest.Files[0].OS != "windows" {
+		t.Errorf("Expected OS 'windows', got '%s'", extManifest.Files[0].OS)
+	}
+	if extManifest.Files[0].Arch != "amd64" {
+		t.Errorf("Expected Arch 'amd64', got '%s'", extManifest.Files[0].Arch)
+	}
+	if extManifest.Files[0].Path != "/foo/test1.dll" {
+		t.Errorf("Expected path '/foo/test1.dll', got '%s'", extManifest.Files[0].Path)
 	}
 
-	mextManifest2, err := ParseExtensionManifest([]byte(sample2)) //checking old manifests work good too
+	extManifest2, err := ParseExtensionManifest([]byte(sample2))
 	if err != nil {
 		t.Fatalf("Error parsing extension manifest (2): %s", err)
 	}
-	if mextManifest2.Name != "test2" {
-		t.Errorf("Expected extension name 'test2', got '%s'", mextManifest2.Name)
+	if extManifest2.Name != "test2" {
+		t.Errorf("Expected extension name 'test2', got '%s'", extManifest2.Name)
 	}
-	for _, extManifest2 := range mextManifest2.ExtCommand {
-		if extManifest2.CommandName != "test2" {
-			t.Errorf("Expected extension command name 'test2', got '%s'", extManifest2.CommandName)
-		}
-		if extManifest2.Help != "some help" {
-			t.Errorf("Expected help 'some help', got '%s'", extManifest2.Help)
-		}
-		if len(extManifest2.Files) != 1 {
-			t.Errorf("Expected 1 file, got %d", len(extManifest2.Files))
-		}
-		if extManifest2.Files[0].OS != "windows" {
-			t.Errorf("Expected OS 'windows', got '%s'", extManifest2.Files[0].OS)
-		}
-		if extManifest2.Files[0].Arch != "amd64" {
-			t.Errorf("Expected Arch 'amd64', got '%s'", extManifest2.Files[0].Arch)
-		}
-		if extManifest2.Files[0].Path != "/foo/test1.dll" {
-			t.Errorf("Expected path '/foo/test1.dll', got '%s'", extManifest2.Files[0].Path)
-		}
+	if extManifest2.CommandName != "test2" {
+		t.Errorf("Expected extension command name 'test2', got '%s'", extManifest2.CommandName)
 	}
-
+	if extManifest2.Help != "some help" {
+		t.Errorf("Expected help 'some help', got '%s'", extManifest2.Help)
+	}
+	if len(extManifest2.Files) != 1 {
+		t.Errorf("Expected 1 file, got %d", len(extManifest2.Files))
+	}
+	if extManifest2.Files[0].OS != "windows" {
+		t.Errorf("Expected OS 'windows', got '%s'", extManifest2.Files[0].OS)
+	}
+	if extManifest2.Files[0].Arch != "amd64" {
+		t.Errorf("Expected Arch 'amd64', got '%s'", extManifest2.Files[0].Arch)
+	}
+	if extManifest2.Files[0].Path != "/foo/test1.dll" {
+		t.Errorf("Expected path '/foo/test1.dll', got '%s'", extManifest2.Files[0].Path)
+	}
 }
 
-func TestParseMultipleCmdManifest(t *testing.T) {
-	mextManifest, err := ParseExtensionManifest([]byte(multicmd))
-	if err != nil {
-		t.Errorf("error parsing manifest: %s", err)
-	}
-	if mextManifest.Name != "example-multientry" {
-		t.Errorf("expected name example-multientry, got %s", mextManifest.Name)
-	}
-
-	if mextManifest.ExtCommand[0].CommandName != "startw" {
-		t.Errorf("expected commandname startw, got %s", mextManifest.ExtCommand[0].CommandName)
-	}
-	if mextManifest.ExtCommand[1].CommandName != "Test2" {
-		t.Errorf("expected commandname Test2, got %s", mextManifest.ExtCommand[1].CommandName)
-	}
-	if mextManifest.ExtCommand[0].Entrypoint != "StartW" {
-		t.Errorf("expected entrypoint StartW, got %s", mextManifest.ExtCommand[0].Entrypoint)
-	}
-	if mextManifest.ExtCommand[1].Entrypoint != "Test2" {
-		t.Errorf("expected entrypoint Test2, got %s", mextManifest.ExtCommand[1].Entrypoint)
-	}
-	if mextManifest.ExtCommand[0].Files[0].Path != "/ex.dll" { //path cleaning adds a root path here? I am not sure if this should be a bug or not... works fine in prod
-		t.Errorf("expected path ex.dll, got %s", mextManifest.ExtCommand[0].Files[0].Path)
-	}
-	if mextManifest.ExtCommand[1].Files[0].Path != "/ex.dll" { //path cleaning adds a root path here? I am not sure if this should be a bug or not... works fine in prod
-		t.Errorf("expected path ex.dll, got %s", mextManifest.ExtCommand[0].Files[0].Path)
-	}
-	//maybe some more? args?
-}
+const (
+	sample3 = `{
+	"name": "test3",
+	"command_name": "test3",
+	"version": "1.0.0",
+	"extension_author": "test",
+	"original_author": "test",
+	"repo_url": "https://example.com/",
+	"help": "some help",
+	"files": [
+		{
+			"os": "windows",
+			"arch": "amd64",
+			"path": "foo/test1.dll"
+		}
+	]
+}`
+)
 
 func TestParseExtensionManifestErrors(t *testing.T) {
 	sample3, err := ParseExtensionManifest([]byte(sample3))
@@ -230,7 +155,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingCmdName := (*sample3)
-	missingCmdName.ExtCommand[0].CommandName = ""
+	missingCmdName.CommandName = ""
 	data, _ = json.Marshal(missingCmdName)
 	_, err = ParseExtensionManifest(data)
 	if err == nil {
@@ -238,7 +163,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingHelp := (*sample3)
-	missingHelp.ExtCommand[0].Help = ""
+	missingHelp.Help = ""
 	data, _ = json.Marshal(missingHelp)
 	_, err = ParseExtensionManifest(data)
 	if err == nil {
@@ -246,7 +171,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingFiles := (*sample3)
-	missingFiles.ExtCommand[0].Files = []*extensionFile{}
+	missingFiles.Files = []*extensionFile{}
 	data, _ = json.Marshal(missingFiles)
 	_, err = ParseExtensionManifest(data)
 	if err == nil {
@@ -254,7 +179,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingFileOS := (*sample3)
-	missingFileOS.ExtCommand[0].Files = []*extensionFile{
+	missingFileOS.Files = []*extensionFile{
 		{
 			OS:   "",
 			Arch: "amd64",
@@ -268,7 +193,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingFileArch := (*sample3)
-	missingFileArch.ExtCommand[0].Files = []*extensionFile{
+	missingFileArch.Files = []*extensionFile{
 		{
 			OS:   "windows",
 			Arch: "",
@@ -282,7 +207,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 
 	missingFilePath := (*sample3)
-	missingFilePath.ExtCommand[0].Files = []*extensionFile{
+	missingFilePath.Files = []*extensionFile{
 		{
 			OS:   "windows",
 			Arch: "amd64",
@@ -303,7 +228,7 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 	}
 	for _, invalidPath := range invalidPaths {
 		missingFilePath2 := (*sample3)
-		missingFilePath2.ExtCommand[0].Files = []*extensionFile{
+		missingFilePath2.Files = []*extensionFile{
 			{
 				OS:   "windows",
 				Arch: "amd64",
@@ -316,4 +241,5 @@ func TestParseExtensionManifestErrors(t *testing.T) {
 			t.Fatalf("Expected missing files.path error, got none")
 		}
 	}
+
 }

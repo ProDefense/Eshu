@@ -21,6 +21,7 @@ import (
 	"math"
 	"reflect"
 
+	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/state/wire"
 )
 
@@ -244,7 +245,7 @@ func (ds *decodeState) waitObject(ods *objectDecodeState, encoded wire.Object, c
 		// See decodeObject; we need to wait for the array (if non-nil).
 		ds.wait(ods, objectID(sv.Ref.Root), callback)
 	} else if iv, ok := encoded.(*wire.Interface); ok {
-		// It's an interface (wait recursively).
+		// It's an interface (wait recurisvely).
 		ds.waitObject(ods, iv.Value, callback)
 	} else if callback != nil {
 		// Nothing to wait for: execute the callback immediately.
@@ -385,7 +386,7 @@ func (ds *decodeState) decodeStruct(ods *objectDecodeState, obj reflect.Value, e
 	if sl, ok := obj.Addr().Interface().(SaverLoader); ok {
 		// Note: may be a registered empty struct which does not
 		// implement the saver/loader interfaces.
-		sl.StateLoad(ds.ctx, Source{internal: od})
+		sl.StateLoad(Source{internal: od})
 	}
 }
 
@@ -567,7 +568,7 @@ func (ds *decodeState) decodeObject(ods *objectDecodeState, obj reflect.Value, e
 	case *wire.Interface:
 		ds.decodeInterface(ods, obj, x)
 	default:
-		// Should not happen, not propagated as an error.
+		// Shoud not happen, not propagated as an error.
 		Failf("unknown object %#v for %q", encoded, obj.Type().Name())
 	}
 }
@@ -659,9 +660,9 @@ func (ds *decodeState) Load(obj reflect.Value) {
 		numDeferred++
 		if s, ok := encoded.(*wire.Struct); ok && s.TypeID != 0 {
 			typ := ds.types.LookupType(typeID(s.TypeID))
-			Failf("unused deferred object: ID %d, type %v", id, typ)
+			log.Warningf("unused deferred object: ID %d, type %v", id, typ)
 		} else {
-			Failf("unused deferred object: ID %d, %#v", id, encoded)
+			log.Warningf("unused deferred object: ID %d, %#v", id, encoded)
 		}
 	}
 	if numDeferred != 0 {
@@ -691,7 +692,7 @@ func (ds *decodeState) Load(obj reflect.Value) {
 			}
 		}
 	}); err != nil {
-		Failf("error executing callbacks: %w\nfor object %#v", err, ods.obj.Interface())
+		Failf("error executing callbacks for %#v: %w", ods.obj.Interface(), err)
 	}
 
 	// Check if we have any remaining dependency cycles. If there are any

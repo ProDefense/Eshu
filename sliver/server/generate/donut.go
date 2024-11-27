@@ -34,6 +34,7 @@ func DonutShellcodeFromPE(pe []byte, arch string, dotnet bool, params string, cl
 	if createNewThread {
 		thread = 1
 	}
+
 	donutArch := getDonutArch(arch)
 	// We don't use DonutConfig.Thread = 1 because we create our own remote thread
 	// in the task runner, and we're doing some housekeeping on it.

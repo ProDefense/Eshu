@@ -21,22 +21,19 @@ package armory
 import (
 	"regexp"
 
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/command/alias"
 	"github.com/bishopfox/sliver/client/command/extensions"
 	"github.com/bishopfox/sliver/client/console"
+	"github.com/desertbit/grumble"
 )
 
 // ArmorySearchCmd - Search for packages by name
-func ArmorySearchCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func ArmorySearchCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	con.PrintInfof("Refreshing package cache ... ")
-	clientConfig := parseArmoryHTTPConfig(cmd)
+	clientConfig := parseArmoryHTTPConfig(ctx)
 	refresh(clientConfig)
 	con.Printf(console.Clearln + "\r")
-
-	rawNameExpr := args[0]
-	// rawNameExpr := ctx.Args.String("name")
+	rawNameExpr := ctx.Args.String("name")
 	if rawNameExpr == "" {
 		con.PrintErrorf("Please specify a search term!\n")
 		return
@@ -47,7 +44,7 @@ func ArmorySearchCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		return
 	}
 
-	aliases, exts := packageManifestsInCache()
+	aliases, exts := packagesInCache()
 	matchedAliases := []*alias.AliasManifest{}
 	for _, a := range aliases {
 		if nameExpr.MatchString(a.CommandName) {
@@ -55,11 +52,9 @@ func ArmorySearchCmd(cmd *cobra.Command, con *console.SliverClient, args []strin
 		}
 	}
 	matchedExts := []*extensions.ExtensionManifest{}
-	for _, extm := range exts {
-		for _, ext := range extm.ExtCommand {
-			if nameExpr.MatchString(ext.CommandName) {
-				matchedExts = append(matchedExts, extm)
-			}
+	for _, ext := range exts {
+		if nameExpr.MatchString(ext.CommandName) {
+			matchedExts = append(matchedExts, ext)
 		}
 	}
 	if len(matchedAliases) == 0 && len(matchedExts) == 0 {

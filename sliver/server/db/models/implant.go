@@ -19,18 +19,11 @@ package models
 */
 
 import (
-	"net/url"
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/server/log"
 	"github.com/gofrs/uuid"
 	"gorm.io/gorm"
-)
-
-var (
-	modelLog = log.NamedLogger("models", "implant")
 )
 
 // ImplantBuild - Represents an implant
@@ -49,29 +42,7 @@ type ImplantBuild struct {
 	// has been seen on threat intel platforms
 	Burned bool
 
-	// Resource ID referencing build
-	ImplantID uint64
-
-	ImplantConfigID uuid.UUID
-
-	// ECC
-	PeerPublicKey           string
-	PeerPublicKeyDigest     string
-	PeerPrivateKey          string
-	PeerPublicKeySignature  string
-	AgeServerPublicKey      string
-	MinisignServerPublicKey string
-
-	// MTLS
-	MtlsCACert string
-	MtlsCert   string
-	MtlsKey    string
-
-	// WireGuard
-	WGImplantPrivKey string
-	WGServerPubKey   string
-
-	Stage bool
+	ImplantConfig ImplantConfig
 }
 
 // BeforeCreate - GORM hook
@@ -84,70 +55,13 @@ func (ib *ImplantBuild) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
-// Convert ImplantBuild To Protobuf
-func (ib *ImplantBuild) ToProtobuf() *clientpb.ImplantBuild {
-	build := clientpb.ImplantBuild{
-		ID:                      ib.ID.String(),
-		Name:                    ib.Name,
-		MD5:                     ib.MD5,
-		SHA1:                    ib.SHA1,
-		SHA256:                  ib.SHA256,
-		Burned:                  ib.Burned,
-		ImplantID:               ib.ImplantID,
-		ImplantConfigID:         ib.ImplantConfigID.String(),
-		AgeServerPublicKey:      ib.AgeServerPublicKey,
-		PeerPublicKey:           ib.PeerPublicKey,
-		PeerPrivateKey:          ib.PeerPrivateKey,
-		MinisignServerPublicKey: ib.MinisignServerPublicKey,
-		PeerPublicKeySignature:  ib.PeerPublicKeySignature,
-		PeerPublicKeyDigest:     ib.PeerPublicKeyDigest,
-		MtlsCACert:              ib.MtlsCACert,
-		MtlsCert:                ib.MtlsCert,
-		MtlsKey:                 ib.MtlsKey,
-		WGImplantPrivKey:        ib.WGImplantPrivKey,
-		WGServerPubKey:          ib.WGServerPubKey,
-		Stage:                   ib.Stage,
-	}
-	return &build
-}
-
-func ImplantBuildFromProtobuf(ib *clientpb.ImplantBuild) *ImplantBuild {
-	id, _ := uuid.FromString(ib.ID)
-	ImplantConfidID, _ := uuid.FromString(ib.ImplantConfigID)
-	build := ImplantBuild{
-		ID:              id,
-		Name:            ib.Name,
-		MD5:             ib.MD5,
-		SHA1:            ib.SHA1,
-		SHA256:          ib.SHA256,
-		Burned:          ib.Burned,
-		ImplantID:       ib.ImplantID,
-		ImplantConfigID: ImplantConfidID,
-		MtlsCACert:      ib.MtlsCACert,
-		MtlsCert:        ib.MtlsCert,
-		MtlsKey:         ib.MtlsKey,
-
-		AgeServerPublicKey:      ib.AgeServerPublicKey,
-		PeerPublicKey:           ib.PeerPublicKey,
-		PeerPrivateKey:          ib.PeerPrivateKey,
-		PeerPublicKeySignature:  ib.PeerPublicKeySignature,
-		MinisignServerPublicKey: ib.MinisignServerPublicKey,
-		PeerPublicKeyDigest:     ib.PeerPublicKeyDigest,
-
-		WGImplantPrivKey: ib.WGImplantPrivKey,
-		WGServerPubKey:   ib.WGServerPubKey,
-		Stage:            ib.Stage,
-	}
-	return &build
-}
-
 // ImplantConfig - An implant build configuration
 type ImplantConfig struct {
 	ID               uuid.UUID `gorm:"primaryKey;->;<-:create;type:uuid;"`
-	ImplantProfileID *uuid.UUID
+	ImplantBuildID   uuid.UUID
+	ImplantProfileID uuid.UUID
 
-	ImplantBuilds []ImplantBuild
-	CreatedAt     time.Time `gorm:"->;<-:create;"`
+	CreatedAt time.Time `gorm:"->;<-:create;"`
 
 	// Go
 	GOOS   string
@@ -159,31 +73,44 @@ type ImplantConfig struct {
 	BeaconInterval int64
 	BeaconJitter   int64
 
+	// ECC
+	ECCPublicKey            string
+	ECCPublicKeyDigest      string
+	ECCPrivateKey           string
+	ECCPublicKeySignature   string
+	ECCServerPublicKey      string
+	MinisignServerPublicKey string
+
+	// MTLS
+	MtlsCACert string
+	MtlsCert   string
+	MtlsKey    string
+
 	Debug               bool
 	DebugFile           string
 	Evasion             bool
 	ObfuscateSymbols    bool
 	ReconnectInterval   int64
-	PollTimeout         int64
 	MaxConnectionErrors uint32
 	ConnectionStrategy  string
-	SGNEnabled          bool
 
 	// WireGuard
+	WGImplantPrivKey  string
+	WGServerPubKey    string
 	WGPeerTunIP       string
 	WGKeyExchangePort uint32
 	WGTcpCommsPort    uint32
 
 	C2 []ImplantC2
 
-	IncludeMTLS bool
-	IncludeWG   bool
-	IncludeHTTP bool
-	IncludeDNS  bool
+	MTLSc2Enabled bool
+	WGc2Enabled   bool
+	HTTPc2Enabled bool
+	DNSc2Enabled  bool
 
-	CanaryDomains   []CanaryDomain
-	IncludeNamePipe bool
-	IncludeTCP      bool
+	CanaryDomains     []CanaryDomain
+	NamePipec2Enabled bool
+	TCPPivotc2Enabled bool
 
 	// Limits
 	LimitDomainJoined bool
@@ -203,10 +130,7 @@ type ImplantConfig struct {
 
 	RunAtLoad bool
 
-	HttpC2ConfigName       string
-	NetGoEnabled           bool
-	TrafficEncodersEnabled bool
-	Assets                 []EncoderAsset
+	FileName string
 }
 
 // BeforeCreate - GORM hook
@@ -219,44 +143,32 @@ func (ic *ImplantConfig) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
-// ToProtobuf - Convert ImplantProfile to protobuf equiv
-func (ip *ImplantProfile) ToProtobuf() *clientpb.ImplantProfile {
-	profile := &clientpb.ImplantProfile{
-		ID:     ip.ID.String(),
-		Name:   ip.Name,
-		Config: ip.ImplantConfig.ToProtobuf(),
-	}
-
-	return profile
-}
-
 // ToProtobuf - Convert ImplantConfig to protobuf equiv
 func (ic *ImplantConfig) ToProtobuf() *clientpb.ImplantConfig {
-	implantBuilds := []*clientpb.ImplantBuild{}
-	for _, implantBuild := range ic.ImplantBuilds {
-		implantBuilds = append(implantBuilds, implantBuild.ToProtobuf())
-	}
 	config := &clientpb.ImplantConfig{
-		ID:            ic.ID.String(),
-		ImplantBuilds: implantBuilds,
+		ID: ic.ID.String(),
 
 		IsBeacon:       ic.IsBeacon,
 		BeaconInterval: ic.BeaconInterval,
 		BeaconJitter:   ic.BeaconJitter,
 
-		GOOS:   ic.GOOS,
-		GOARCH: ic.GOARCH,
+		GOOS:               ic.GOOS,
+		GOARCH:             ic.GOARCH,
+		ECCServerPublicKey: ic.ECCServerPublicKey,
+		ECCPublicKey:       ic.ECCPublicKey,
+		ECCPrivateKey:      ic.ECCPrivateKey,
+		MtlsCACert:         ic.MtlsCACert,
+		MtlsCert:           ic.MtlsCert,
+		MtlsKey:            ic.MtlsKey,
 
 		Debug:            ic.Debug,
 		DebugFile:        ic.DebugFile,
 		Evasion:          ic.Evasion,
 		ObfuscateSymbols: ic.ObfuscateSymbols,
 		TemplateName:     ic.TemplateName,
-		SGNEnabled:       ic.SGNEnabled,
 
 		ReconnectInterval:   ic.ReconnectInterval,
 		MaxConnectionErrors: ic.MaxConnectionErrors,
-		PollTimeout:         ic.PollTimeout,
 		ConnectionStrategy:  ic.ConnectionStrategy,
 
 		LimitDatetime:     ic.LimitDatetime,
@@ -270,36 +182,18 @@ func (ic *ImplantConfig) ToProtobuf() *clientpb.ImplantConfig {
 		IsService:         ic.IsService,
 		IsShellcode:       ic.IsShellcode,
 		Format:            ic.Format,
+		WGImplantPrivKey:  ic.WGImplantPrivKey,
+		WGServerPubKey:    ic.WGServerPubKey,
 		WGPeerTunIP:       ic.WGPeerTunIP,
 		WGKeyExchangePort: ic.WGKeyExchangePort,
 		WGTcpCommsPort:    ic.WGTcpCommsPort,
 
-		TrafficEncodersEnabled: ic.TrafficEncodersEnabled,
-		NetGoEnabled:           ic.NetGoEnabled,
-		HTTPC2ConfigName:       ic.HttpC2ConfigName,
-
-		IncludeMTLS:     ic.IncludeMTLS,
-		IncludeHTTP:     ic.IncludeHTTP,
-		IncludeDNS:      ic.IncludeDNS,
-		IncludeNamePipe: ic.IncludeNamePipe,
-		IncludeWG:       ic.IncludeWG,
-		IncludeTCP:      ic.IncludeTCP,
+		FileName: ic.FileName,
 	}
-
-	if ic.ImplantProfileID != nil {
-		config.ImplantProfileID = ic.ImplantProfileID.String()
-	}
-
 	// Copy Canary Domains
 	config.CanaryDomains = []string{}
 	for _, canaryDomain := range ic.CanaryDomains {
 		config.CanaryDomains = append(config.CanaryDomains, canaryDomain.Domain)
-	}
-
-	// Copy Assets
-	config.Assets = []*commonpb.File{}
-	for _, asset := range ic.Assets {
-		config.Assets = append(config.Assets, asset.ToProtobuf())
 	}
 
 	// Copy C2
@@ -353,11 +247,9 @@ type ImplantC2 struct {
 
 // BeforeCreate - GORM hook
 func (c2 *ImplantC2) BeforeCreate(tx *gorm.DB) (err error) {
-	if c2.ID == uuid.Nil {
-		c2.ID, err = uuid.NewV4()
-		if err != nil {
-			return err
-		}
+	c2.ID, err = uuid.NewV4()
+	if err != nil {
+		return err
 	}
 	c2.CreatedAt = time.Now()
 	return nil
@@ -366,7 +258,6 @@ func (c2 *ImplantC2) BeforeCreate(tx *gorm.DB) (err error) {
 // ToProtobuf - Convert to protobuf version
 func (c2 *ImplantC2) ToProtobuf() *clientpb.ImplantC2 {
 	return &clientpb.ImplantC2{
-		ID:       c2.ID.String(),
 		Priority: c2.Priority,
 		URL:      c2.URL,
 		Options:  c2.Options,
@@ -396,152 +287,4 @@ func (ip *ImplantProfile) BeforeCreate(tx *gorm.DB) (err error) {
 	}
 	ip.CreatedAt = time.Now()
 	return nil
-}
-
-// EncoderAsset - Tracks which assets were embedded into the implant
-// but we currently don't keep a copy of the actual data
-type EncoderAsset struct {
-	ID              uuid.UUID `gorm:"primaryKey;->;<-:create;type:uuid;"`
-	ImplantConfigID uuid.UUID
-
-	Name string
-}
-
-func (t *EncoderAsset) ToProtobuf() *commonpb.File {
-	return &commonpb.File{Name: t.Name}
-}
-
-const defaultTemplateName = "sliver"
-
-// ImplantProfileFromProtobuf - Create a native profile struct from Protobuf
-func ImplantProfileFromProtobuf(pbProfile *clientpb.ImplantProfile) *ImplantProfile {
-	cfg := ImplantProfile{}
-	id, _ := uuid.FromString(pbProfile.ID)
-	cfg.ID = id
-	cfg.Name = pbProfile.Name
-	config := ImplantConfigFromProtobuf(pbProfile.Config)
-	cfg.ImplantConfig = config
-
-	return &cfg
-}
-
-// ImplantConfigFromProtobuf - Create a native config struct from Protobuf
-func ImplantConfigFromProtobuf(pbConfig *clientpb.ImplantConfig) *ImplantConfig {
-	implantBuilds := []ImplantBuild{}
-	for _, implantBuild := range pbConfig.ImplantBuilds {
-		implantBuilds = append(implantBuilds, *ImplantBuildFromProtobuf(implantBuild))
-	}
-	cfg := ImplantConfig{}
-	id, _ := uuid.FromString(pbConfig.ID)
-	cfg.ID = id
-	cfg.ImplantBuilds = implantBuilds
-	profileID, _ := uuid.FromString(pbConfig.ImplantProfileID)
-	if profileID == uuid.Nil {
-		cfg.ImplantProfileID = nil
-	} else {
-		cfg.ImplantProfileID = &profileID
-	}
-
-	cfg.IsBeacon = pbConfig.IsBeacon
-	cfg.BeaconInterval = pbConfig.BeaconInterval
-	cfg.BeaconJitter = pbConfig.BeaconJitter
-
-	cfg.GOOS = pbConfig.GOOS
-	cfg.GOARCH = pbConfig.GOARCH
-	cfg.Debug = pbConfig.Debug
-	cfg.Evasion = pbConfig.Evasion
-	cfg.ObfuscateSymbols = pbConfig.ObfuscateSymbols
-	cfg.TemplateName = pbConfig.TemplateName
-	if cfg.TemplateName == "" {
-		cfg.TemplateName = defaultTemplateName
-	}
-	cfg.SGNEnabled = pbConfig.SGNEnabled
-
-	cfg.IncludeMTLS = IsC2Enabled([]string{"mtls"}, pbConfig.C2)
-	cfg.IncludeWG = IsC2Enabled([]string{"wg"}, pbConfig.C2)
-	cfg.IncludeHTTP = IsC2Enabled([]string{"http", "https"}, pbConfig.C2)
-	cfg.IncludeDNS = IsC2Enabled([]string{"dns"}, pbConfig.C2)
-	cfg.IncludeNamePipe = IsC2Enabled([]string{"namedpipe"}, pbConfig.C2)
-	cfg.IncludeTCP = IsC2Enabled([]string{"tcppivot"}, pbConfig.C2)
-
-	cfg.WGPeerTunIP = pbConfig.WGPeerTunIP
-	cfg.WGKeyExchangePort = pbConfig.WGKeyExchangePort
-	cfg.WGTcpCommsPort = pbConfig.WGTcpCommsPort
-
-	cfg.ReconnectInterval = pbConfig.ReconnectInterval
-	cfg.MaxConnectionErrors = pbConfig.MaxConnectionErrors
-	cfg.PollTimeout = pbConfig.PollTimeout
-
-	cfg.C2 = copyC2List(pbConfig.C2, cfg.ID)
-	cfg.CanaryDomains = []CanaryDomain{}
-	for _, pbCanary := range pbConfig.CanaryDomains {
-		cfg.CanaryDomains = append(cfg.CanaryDomains, CanaryDomain{
-			Domain: pbCanary,
-		})
-	}
-	cfg.ConnectionStrategy = pbConfig.ConnectionStrategy
-
-	cfg.LimitDomainJoined = pbConfig.LimitDomainJoined
-	cfg.LimitDatetime = pbConfig.LimitDatetime
-	cfg.LimitHostname = pbConfig.LimitHostname
-	cfg.LimitUsername = pbConfig.LimitUsername
-	cfg.LimitFileExists = pbConfig.LimitFileExists
-	cfg.LimitLocale = pbConfig.LimitLocale
-
-	cfg.Format = pbConfig.Format
-	cfg.IsSharedLib = pbConfig.IsSharedLib
-	cfg.IsService = pbConfig.IsService
-	cfg.IsShellcode = pbConfig.IsShellcode
-	cfg.RunAtLoad = pbConfig.RunAtLoad
-	cfg.DebugFile = pbConfig.DebugFile
-
-	cfg.HttpC2ConfigName = pbConfig.HTTPC2ConfigName
-	cfg.NetGoEnabled = pbConfig.NetGoEnabled
-	cfg.TrafficEncodersEnabled = pbConfig.TrafficEncodersEnabled
-
-	cfg.Assets = []EncoderAsset{}
-	for _, pbAsset := range pbConfig.Assets {
-		cfg.Assets = append(cfg.Assets, EncoderAsset{
-			Name: pbAsset.Name,
-		})
-	}
-
-	return &cfg
-}
-
-func copyC2List(src []*clientpb.ImplantC2, id uuid.UUID) []ImplantC2 {
-	c2s := []ImplantC2{}
-	for _, srcC2 := range src {
-		c2URL, err := url.Parse(srcC2.URL)
-		if err != nil {
-			modelLog.Warnf("Failed to parse c2 url %v", err)
-			continue
-		}
-		uuid, _ := uuid.FromString(srcC2.ID)
-		c2s = append(c2s, ImplantC2{
-			ID:              uuid,
-			ImplantConfigID: id,
-			Priority:        srcC2.Priority,
-			URL:             c2URL.String(),
-			Options:         srcC2.Options,
-		})
-	}
-	return c2s
-}
-
-func IsC2Enabled(schemes []string, c2s []*clientpb.ImplantC2) bool {
-	for _, c2 := range c2s {
-		c2URL, err := url.Parse(c2.URL)
-		if err != nil {
-			modelLog.Warnf("Failed to parse c2 url %v", err)
-			continue
-		}
-		for _, scheme := range schemes {
-			if scheme == c2URL.Scheme {
-				return true
-			}
-		}
-	}
-	modelLog.Debugf("No %v URLs found in %v", schemes, c2s)
-	return false
 }

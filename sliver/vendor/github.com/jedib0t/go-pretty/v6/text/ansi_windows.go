@@ -10,7 +10,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var enableVTPMutex = sync.Mutex{}
+var (
+	enableVTPMutex = sync.Mutex{}
+)
 
 func areANSICodesSupported() bool {
 	enableVTPMutex.Lock()

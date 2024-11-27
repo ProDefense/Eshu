@@ -19,68 +19,45 @@ package completers
 */
 
 import (
-	"net"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 
-	"github.com/rsteube/carapace"
+	"github.com/bishopfox/sliver/client/console"
 )
 
-// ClientInterfacesCompleter completes interface addresses on the client host.
-func ClientInterfacesCompleter() carapace.Action {
-	return carapace.ActionCallback(func(_ carapace.Context) carapace.Action {
-		ifaces, err := net.Interfaces()
-		if err != nil {
-			return carapace.ActionMessage("failed to get net interfaces: %s", err.Error())
+// LocalPathCompleter - Completes a local file system path
+func LocalPathCompleter(prefix string, args []string, con *console.SliverConsoleClient) []string {
+	var parent string
+	var partial string
+	fi, err := os.Stat(prefix)
+	if os.IsNotExist(err) {
+		parent = filepath.Dir(prefix)
+		partial = filepath.Base(prefix)
+	} else {
+		if fi.IsDir() {
+			parent = prefix
+			partial = ""
+		} else {
+			parent = filepath.Dir(prefix)
+			partial = filepath.Base(prefix)
 		}
+	}
 
-		results := make([]string, 0)
-
-		for _, i := range ifaces {
-			addrs, err := i.Addrs()
-			if err != nil {
-				continue
+	results := []string{}
+	ls, err := ioutil.ReadDir(parent)
+	if err != nil {
+		return results
+	}
+	for _, fi = range ls {
+		if 0 < len(partial) {
+			if strings.HasPrefix(fi.Name(), partial) {
+				results = append(results, filepath.Join(parent, fi.Name()))
 			}
-
-			for _, a := range addrs {
-				switch v := a.(type) {
-				case *net.IPAddr:
-					results = append(results, v.IP.String())
-				case *net.IPNet:
-					results = append(results, v.IP.String())
-				default:
-					results = append(results, v.String())
-				}
-			}
+		} else {
+			results = append(results, filepath.Join(parent, fi.Name()))
 		}
-
-		return carapace.ActionValues(results...).Tag("client interfaces").NoSpace(':')
-	})
-}
-
-// LocalProxyCompleter gives URL completion to all flags/arguments that accept a client proxy address.
-func LocalProxyCompleter() carapace.Action {
-	return carapace.ActionCallback(func(c carapace.Context) carapace.Action {
-		prefix := ""
-
-		hostPort := carapace.ActionMultiParts(":", func(c carapace.Context) carapace.Action {
-			switch len(c.Parts) {
-			case 0:
-				return ClientInterfacesCompleter()
-			case 1:
-				return carapace.ActionMessage("server port")
-			default:
-				return carapace.ActionValues()
-			}
-		})
-
-		return carapace.ActionMultiParts("://", func(c carapace.Context) carapace.Action {
-			switch len(c.Parts) {
-			case 0:
-				return carapace.ActionValues("http", "https").Tag("proxy protocols").Suffix("://")
-			case 1:
-				return hostPort
-			default:
-				return carapace.ActionValues()
-			}
-		}).Invoke(c).Prefix(prefix).ToA()
-	})
+	}
+	return results
 }

@@ -30,29 +30,29 @@ import (
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/clientpb"
-	"github.com/spf13/cobra"
+	"github.com/desertbit/grumble"
 )
 
-// WebsitesAddContentCmd - Add static content to a website.
-func WebsitesAddContentCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
-	websiteName, _ := cmd.Flags().GetString("website")
+// WebsitesAddContentCmd - Add static content to a website
+func WebsitesAddContentCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
+	websiteName := ctx.Flags.String("website")
 	if websiteName == "" {
 		con.PrintErrorf("Must specify a website name via --website, see --help\n")
 		return
 	}
-	webPath, _ := cmd.Flags().GetString("web-path")
+	webPath := ctx.Flags.String("web-path")
 	if webPath == "" {
 		con.PrintErrorf("Must specify a web path via --web-path, see --help\n")
 		return
 	}
-	contentPath, _ := cmd.Flags().GetString("content")
+	contentPath := ctx.Flags.String("content")
 	if contentPath == "" {
 		con.PrintErrorf("Must specify some --content\n")
 		return
 	}
 	contentPath, _ = filepath.Abs(contentPath)
-	contentType, _ := cmd.Flags().GetString("content-type")
-	recursive, _ := cmd.Flags().GetBool("recursive")
+	contentType := ctx.Flags.String("content-type")
+	recursive := ctx.Flags.Bool("recursive")
 
 	fileInfo, err := os.Stat(contentPath)
 	if err != nil {

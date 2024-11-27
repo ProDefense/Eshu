@@ -144,7 +144,7 @@ func (*protocol) ParsePorts(v []byte) (src, dst uint16, err tcpip.Error) {
 // to a specific processing queue. Each queue is serviced by its own processor
 // goroutine which is responsible for dequeuing and doing full TCP dispatch of
 // the packet.
-func (p *protocol) QueuePacket(ep stack.TransportEndpoint, id stack.TransportEndpointID, pkt stack.PacketBufferPtr) {
+func (p *protocol) QueuePacket(ep stack.TransportEndpoint, id stack.TransportEndpointID, pkt *stack.PacketBuffer) {
 	p.dispatcher.queuePacket(ep, id, p.stack.Clock(), pkt)
 }
 
@@ -155,7 +155,7 @@ func (p *protocol) QueuePacket(ep stack.TransportEndpoint, id stack.TransportEnd
 // a reset is sent in response to any incoming segment except another reset. In
 // particular, SYNs addressed to a non-existent connection are rejected by this
 // means."
-func (p *protocol) HandleUnknownDestinationPacket(id stack.TransportEndpointID, pkt stack.PacketBufferPtr) stack.UnknownDestinationPacketDisposition {
+func (p *protocol) HandleUnknownDestinationPacket(id stack.TransportEndpointID, pkt *stack.PacketBuffer) stack.UnknownDestinationPacketDisposition {
 	s, err := newIncomingSegment(id, p.stack.Clock(), pkt)
 	if err != nil {
 		return stack.UnknownDestinationPacketMalformed
@@ -185,8 +185,8 @@ func (p *protocol) tsOffset(src, dst tcpip.Address) tcp.TSOffset {
 	// Per hash.Hash.Writer:
 	//
 	// It never returns an error.
-	_, _ = h.Write(src.AsSlice())
-	_, _ = h.Write(dst.AsSlice())
+	_, _ = h.Write([]byte(src))
+	_, _ = h.Write([]byte(dst))
 	return tcp.NewTSOffset(h.Sum32())
 }
 
@@ -501,7 +501,7 @@ func (p *protocol) Resume() {
 }
 
 // Parse implements stack.TransportProtocol.Parse.
-func (*protocol) Parse(pkt stack.PacketBufferPtr) bool {
+func (*protocol) Parse(pkt *stack.PacketBuffer) bool {
 	return parse.TCP(pkt)
 }
 
@@ -521,7 +521,6 @@ func NewProtocol(s *stack.Stack) stack.TransportProtocol {
 		},
 		congestionControl:          ccReno,
 		availableCongestionControl: []string{ccReno, ccCubic},
-		moderateReceiveBuffer:      true,
 		lingerTimeout:              DefaultTCPLingerTimeout,
 		timeWaitTimeout:            DefaultTCPTimeWaitTimeout,
 		timeWaitReuse:              tcpip.TCPTimeWaitReuseLoopbackOnly,

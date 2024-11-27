@@ -34,18 +34,21 @@ var (
 
 // GetBeacons - Get a list of beacons from the database
 func (rpc *Server) GetBeacons(ctx context.Context, req *commonpb.Empty) (*clientpb.Beacons, error) {
-	beacons, err := db.ListBeacons()
+	dbBeacons, err := db.ListBeacons()
 	if err != nil {
 		beaconRpcLog.Errorf("Failed to find db beacons: %s", err)
 		return nil, ErrDatabaseFailure
 	}
-	for id, beacon := range beacons {
+	beacons := []*clientpb.Beacon{}
+	for _, beacon := range dbBeacons {
+		pbBeacon := beacon.ToProtobuf()
 		all, completed, err := db.CountTasksByBeaconID(beacon.ID)
 		if err != nil {
 			beaconRpcLog.Errorf("Task count failed: %s", err)
 		}
-		beacons[id].TasksCount = all
-		beacons[id].TasksCountCompleted = completed
+		pbBeacon.TasksCount = all
+		pbBeacon.TasksCountCompleted = completed
+		beacons = append(beacons, pbBeacon)
 	}
 	return &clientpb.Beacons{Beacons: beacons}, nil
 }
@@ -67,7 +70,6 @@ func (rpc *Server) RmBeacon(ctx context.Context, req *clientpb.Beacon) (*commonp
 		beaconRpcLog.Error(err)
 		return nil, ErrInvalidBeaconID
 	}
-
 	err = db.Session().Where(&models.BeaconTask{
 		BeaconID: beacon.ID},
 	).Delete(&models.BeaconTask{}).Error
@@ -89,7 +91,11 @@ func (rpc *Server) GetBeaconTasks(ctx context.Context, req *clientpb.Beacon) (*c
 	if err != nil {
 		return nil, ErrInvalidBeaconID
 	}
-	tasks, err := db.BeaconTasksByBeaconID(beacon.ID.String())
+	dbTasks, err := db.BeaconTasksByBeaconID(beacon.ID.String())
+	tasks := []*clientpb.BeaconTask{}
+	for _, task := range dbTasks {
+		tasks = append(tasks, task.ToProtobuf(false))
+	}
 	return &clientpb.BeaconTasks{Tasks: tasks}, err
 }
 
@@ -99,7 +105,7 @@ func (rpc *Server) GetBeaconTaskContent(ctx context.Context, req *clientpb.Beaco
 	if err != nil {
 		return nil, ErrInvalidBeaconTaskID
 	}
-	return task, nil
+	return task.ToProtobuf(true), nil
 }
 
 // CancelBeaconTask - Cancel a beacon task
@@ -117,26 +123,11 @@ func (rpc *Server) CancelBeaconTask(ctx context.Context, req *clientpb.BeaconTas
 		}
 	} else {
 		// No real point to cancel the task if it's already been sent
-		return task, ErrInvalidBeaconTaskCancelState
+		return task.ToProtobuf(false), ErrInvalidBeaconTaskCancelState
 	}
 	task, err = db.BeaconTaskByID(req.ID)
 	if err != nil {
 		return nil, ErrInvalidBeaconTaskID
 	}
-	return task, nil
-}
-
-// UpdateBeaconIntegrityInformation - Update process integrity information for a beacon
-func (rpc *Server) UpdateBeaconIntegrityInformation(ctx context.Context, req *clientpb.BeaconIntegrity) (*commonpb.Empty, error) {
-	resp := &commonpb.Empty{}
-	beacon, err := db.BeaconByID(req.BeaconID)
-	if err != nil || beacon == nil {
-		return resp, ErrInvalidBeaconID
-	}
-	beacon.Integrity = req.Integrity
-	err = db.Session().Save(beacon).Error
-	if err != nil {
-		return resp, err
-	}
-	return resp, nil
+	return task.ToProtobuf(false), nil
 }

@@ -165,8 +165,7 @@ func TestIsC2Domain(t *testing.T) {
 func TestDetermineLikelyEncoders(t *testing.T) {
 	listener := StartDNSListener("", uint16(9999), c2Domains, false, true)
 	sample := randomDataRandomSize(2048)
-	encodedSample, _ := encoders.Base58{}.Encode(sample)
-	b58Sample := string(encodedSample)
+	b58Sample := string(encoders.Base58{}.Encode(sample))
 	likelyEncoders := listener.determineLikelyEncoders(b58Sample)
 	_, err := likelyEncoders[0].Decode([]byte(b58Sample))
 	if err != nil {

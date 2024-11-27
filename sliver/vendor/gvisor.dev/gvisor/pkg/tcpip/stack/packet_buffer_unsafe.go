@@ -18,11 +18,3 @@ import "unsafe"
 
 // PacketBufferStructSize is the minimal size of the packet buffer overhead.
 const PacketBufferStructSize = int(unsafe.Sizeof(PacketBuffer{}))
-
-// ID returns a unique ID for the underlying storage of the packet.
-//
-// Two *PacketBuffers have the same IDs if and only if they point to the same
-// location in memory.
-func (pk *PacketBuffer) ID() uintptr {
-	return uintptr(unsafe.Pointer(pk))
-}

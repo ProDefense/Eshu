@@ -115,6 +115,10 @@ func (rpc *Server) GenericHandler(req GenericRequest, resp GenericResponse) erro
 		return ErrInvalidSessionID
 	}
 
+	// Overwrite unused implant fields before re-serializing
+	request.SessionID = ""
+	request.BeaconID = ""
+
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		return err

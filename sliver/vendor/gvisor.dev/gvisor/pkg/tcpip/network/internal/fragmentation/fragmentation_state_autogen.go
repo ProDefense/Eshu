@@ -3,8 +3,6 @@
 package fragmentation
 
 import (
-	"context"
-
 	"gvisor.dev/gvisor/pkg/state"
 )
 
@@ -28,10 +26,10 @@ func (l *reassemblerList) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &l.tail)
 }
 
-func (l *reassemblerList) afterLoad(context.Context) {}
+func (l *reassemblerList) afterLoad() {}
 
 // +checklocksignore
-func (l *reassemblerList) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (l *reassemblerList) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &l.head)
 	stateSourceObject.Load(1, &l.tail)
 }
@@ -56,10 +54,10 @@ func (e *reassemblerEntry) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(1, &e.prev)
 }
 
-func (e *reassemblerEntry) afterLoad(context.Context) {}
+func (e *reassemblerEntry) afterLoad() {}
 
 // +checklocksignore
-func (e *reassemblerEntry) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+func (e *reassemblerEntry) StateLoad(stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &e.next)
 	stateSourceObject.Load(1, &e.prev)
 }

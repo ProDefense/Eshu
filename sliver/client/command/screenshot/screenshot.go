@@ -21,6 +21,7 @@ package screenshot
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -30,12 +31,13 @@ import (
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/sliverpb"
 	"github.com/bishopfox/sliver/util"
-	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/desertbit/grumble"
 )
 
-// ScreenshotCmd - Take a screenshot of the remote system.
-func ScreenshotCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+// ScreenshotCmd - Take a screenshot of the remote system
+func ScreenshotCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	session, beacon := con.ActiveTarget.GetInteractive()
 	if session == nil && beacon == nil {
 		return
@@ -48,16 +50,16 @@ func ScreenshotCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 	}
 
 	screenshot, err := con.Rpc.Screenshot(context.Background(), &sliverpb.ScreenshotReq{
-		Request: con.ActiveTarget.Request(cmd),
+		Request: con.ActiveTarget.Request(ctx),
 	})
 	if err != nil {
 		con.PrintErrorf("%s\n", err)
 		return
 	}
 
-	saveLoot, _ := cmd.Flags().GetBool("loot")
-	lootName, _ := cmd.Flags().GetString("name")
-	saveTo, _ := cmd.Flags().GetString("save")
+	saveLoot := ctx.Flags.Bool("loot")
+	lootName := ctx.Flags.String("name")
+	saveTo := ctx.Flags.String("save")
 
 	hostname := getHostname(session, beacon)
 	if screenshot.Response != nil && screenshot.Response.Async {
@@ -76,7 +78,7 @@ func ScreenshotCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 			}
 
 			if !saveLoot || saveTo != "" {
-				PrintScreenshot(screenshot, hostname, cmd, con)
+				PrintScreenshot(screenshot, hostname, ctx, con)
 			}
 		})
 		con.PrintAsyncResponse(screenshot.Response)
@@ -90,27 +92,27 @@ func ScreenshotCmd(cmd *cobra.Command, con *console.SliverClient, args []string)
 		}
 
 		if !saveLoot || saveTo != "" {
-			PrintScreenshot(screenshot, hostname, cmd, con)
+			PrintScreenshot(screenshot, hostname, ctx, con)
 		}
 	}
 }
 
-// PrintScreenshot - Handle the screenshot command response.
-func PrintScreenshot(screenshot *sliverpb.Screenshot, hostname string, cmd *cobra.Command, con *console.SliverClient) {
+// PrintScreenshot - Handle the screenshot command response
+func PrintScreenshot(screenshot *sliverpb.Screenshot, hostname string, ctx *grumble.Context, con *console.SliverConsoleClient) {
 	timestamp := time.Now().Format("20060102150405")
 
-	saveTo, _ := cmd.Flags().GetString("save")
+	saveTo := ctx.Flags.String("save")
 	var saveToFile *os.File
 	var err error
 	if saveTo == "" {
 		tmpFileName := filepath.Base(fmt.Sprintf("screenshot_%s_%s_*.png", filepath.Base(hostname), timestamp))
-		saveToFile, err = os.CreateTemp("", tmpFileName)
+		saveToFile, err = ioutil.TempFile("", tmpFileName)
 		if err != nil {
 			con.PrintErrorf("%s\n", err)
 			return
 		}
 	} else {
-		saveToFile, err = os.OpenFile(saveTo, os.O_WRONLY|os.O_CREATE, 0o600)
+		saveToFile, err = os.OpenFile(saveTo, os.O_WRONLY|os.O_CREATE, 0600)
 		if err != nil {
 			con.PrintErrorf("Error creating file: %s\n", err)
 			return
@@ -120,14 +122,14 @@ func PrintScreenshot(screenshot *sliverpb.Screenshot, hostname string, cmd *cobr
 	var n int
 	n, err = saveToFile.Write(screenshot.Data)
 	if err != nil {
-		con.PrintErrorf("Error writing file: %s\n", err)
+		con.PrintErrorf("Error writting file: %s\n", err)
 		return
 	}
 
 	con.PrintInfof("Screenshot written to %s (%s)\n", saveToFile.Name(), util.ByteCountBinary(int64(n)))
 }
 
-func LootScreenshot(screenshot *sliverpb.Screenshot, lootName string, hostName string, con *console.SliverClient) {
+func LootScreenshot(screenshot *sliverpb.Screenshot, lootName string, hostName string, con *console.SliverConsoleClient) {
 	timeNow := time.Now().UTC()
 	screenshotFileName := fmt.Sprintf("screenshot_%s_%s.png", hostName, timeNow.Format("20060102150405"))
 
@@ -135,7 +137,7 @@ func LootScreenshot(screenshot *sliverpb.Screenshot, lootName string, hostName s
 		lootName = screenshotFileName
 	}
 
-	lootMessage := loot.CreateLootMessage(con.ActiveTarget.GetHostUUID(), screenshotFileName, lootName, clientpb.FileType_BINARY, screenshot.GetData())
+	lootMessage := loot.CreateLootMessage(screenshotFileName, lootName, clientpb.LootType_LOOT_FILE, clientpb.FileType_BINARY, screenshot.GetData())
 	loot.SendLootMessage(lootMessage, con)
 }
 

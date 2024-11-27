@@ -27,7 +27,6 @@ import (
 	// {{if .Config.Debug}}
 	"log"
 	// {{end}}
-
 	"github.com/Binject/universal"
 )
 

@@ -47,11 +47,10 @@ func (e *timeoutError) Temporary() bool { return true }
 // A TCPListener is a wrapper around a TCP tcpip.Endpoint that implements
 // net.Listener.
 type TCPListener struct {
-	stack      *stack.Stack
-	ep         tcpip.Endpoint
-	wq         *waiter.Queue
-	cancelOnce sync.Once
-	cancel     chan struct{}
+	stack  *stack.Stack
+	ep     tcpip.Endpoint
+	wq     *waiter.Queue
+	cancel chan struct{}
 }
 
 // NewTCPListener creates a new TCPListener from a listening tcpip.Endpoint.
@@ -113,9 +112,7 @@ func (l *TCPListener) Close() error {
 // Shutdown stops the HTTP server.
 func (l *TCPListener) Shutdown() {
 	l.ep.Shutdown(tcpip.ShutdownWrite | tcpip.ShutdownRead)
-	l.cancelOnce.Do(func() {
-		close(l.cancel) // broadcast cancellation
-	})
+	close(l.cancel) // broadcast cancellation
 }
 
 // Addr implements net.Listener.Addr.
@@ -469,11 +466,11 @@ func (c *TCPConn) newOpError(op string, err error) *net.OpError {
 }
 
 func fullToTCPAddr(addr tcpip.FullAddress) *net.TCPAddr {
-	return &net.TCPAddr{IP: net.IP(addr.Addr.AsSlice()), Port: int(addr.Port)}
+	return &net.TCPAddr{IP: net.IP(addr.Addr), Port: int(addr.Port)}
 }
 
 func fullToUDPAddr(addr tcpip.FullAddress) *net.UDPAddr {
-	return &net.UDPAddr{IP: net.IP(addr.Addr.AsSlice()), Port: int(addr.Port)}
+	return &net.UDPAddr{IP: net.IP(addr.Addr), Port: int(addr.Port)}
 }
 
 // DialTCP creates a new TCPConn connected to the specified address.
@@ -664,7 +661,7 @@ func (c *UDPConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	if addr != nil {
 		ua := addr.(*net.UDPAddr)
 		writeOptions.To = &tcpip.FullAddress{
-			Addr: tcpip.AddrFromSlice(ua.IP),
+			Addr: tcpip.Address(ua.IP),
 			Port: uint16(ua.Port),
 		}
 	}

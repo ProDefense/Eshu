@@ -19,7 +19,6 @@ import (
 	"math"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 )
 
 const (
@@ -101,8 +100,8 @@ func (b UDP) SetDestinationPort(port uint16) {
 }
 
 // SetChecksum sets the "checksum" field of the UDP header.
-func (b UDP) SetChecksum(xsum uint16) {
-	checksum.Put(b[udpChecksum:], xsum)
+func (b UDP) SetChecksum(checksum uint16) {
+	PutChecksum(b[udpChecksum:], checksum)
 }
 
 // SetLength sets the "length" field of the UDP header.
@@ -114,13 +113,13 @@ func (b UDP) SetLength(length uint16) {
 // checksum of the network-layer pseudo-header and the checksum of the payload.
 func (b UDP) CalculateChecksum(partialChecksum uint16) uint16 {
 	// Calculate the rest of the checksum.
-	return checksum.Checksum(b[:UDPMinimumSize], partialChecksum)
+	return Checksum(b[:UDPMinimumSize], partialChecksum)
 }
 
 // IsChecksumValid returns true iff the UDP header's checksum is valid.
 func (b UDP) IsChecksumValid(src, dst tcpip.Address, payloadChecksum uint16) bool {
 	xsum := PseudoHeaderChecksum(UDPProtocolNumber, dst, src, b.Length())
-	xsum = checksum.Combine(xsum, payloadChecksum)
+	xsum = ChecksumCombine(xsum, payloadChecksum)
 	return b.CalculateChecksum(xsum) == 0xffff
 }
 

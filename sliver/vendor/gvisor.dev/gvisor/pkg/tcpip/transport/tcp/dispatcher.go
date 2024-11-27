@@ -129,7 +129,7 @@ func deliverAccepted(ep *endpoint) bool {
 
 // handleConnecting is responsible for TCP processing for an endpoint in one of
 // the connecting states.
-func handleConnecting(ep *endpoint) {
+func (p *processor) handleConnecting(ep *endpoint) {
 	if !ep.TryLock() {
 		return
 	}
@@ -172,7 +172,7 @@ func handleConnecting(ep *endpoint) {
 
 // handleConnected is responsible for TCP processing for an endpoint in one of
 // the connected states(StateEstablished, StateFinWait1 etc.)
-func handleConnected(ep *endpoint) {
+func (p *processor) handleConnected(ep *endpoint) {
 	if !ep.TryLock() {
 		return
 	}
@@ -200,7 +200,7 @@ func handleConnected(ep *endpoint) {
 		ep.waiterQueue.Notify(waiter.EventHUp | waiter.EventErr | waiter.ReadableEvents | waiter.WritableEvents)
 		return
 	case ep.EndpointState() == StateTimeWait:
-		startTimeWait(ep)
+		p.startTimeWait(ep)
 	}
 	ep.mu.Unlock()
 }
@@ -208,7 +208,7 @@ func handleConnected(ep *endpoint) {
 // startTimeWait starts a new goroutine to handle TIME-WAIT.
 //
 // +checklocks:ep.mu
-func startTimeWait(ep *endpoint) {
+func (p *processor) startTimeWait(ep *endpoint) {
 	// Disable close timer as we are now entering real TIME_WAIT.
 	if ep.finWait2Timer != nil {
 		ep.finWait2Timer.Stop()
@@ -221,7 +221,7 @@ func startTimeWait(ep *endpoint) {
 
 // handleTimeWait is responsible for TCP processing for an endpoint in TIME-WAIT
 // state.
-func handleTimeWait(ep *endpoint) {
+func (p *processor) handleTimeWait(ep *endpoint) {
 	if !ep.TryLock() {
 		return
 	}
@@ -251,7 +251,7 @@ func handleTimeWait(ep *endpoint) {
 
 // handleListen is responsible for TCP processing for an endpoint in LISTEN
 // state.
-func handleListen(ep *endpoint) {
+func (p *processor) handleListen(ep *endpoint) {
 	if !ep.TryLock() {
 		return
 	}
@@ -307,13 +307,13 @@ func (p *processor) start(wg *sync.WaitGroup) {
 				}
 				switch state := ep.EndpointState(); {
 				case state.connecting():
-					handleConnecting(ep)
+					p.handleConnecting(ep)
 				case state.connected() && state != StateTimeWait:
-					handleConnected(ep)
+					p.handleConnected(ep)
 				case state == StateTimeWait:
-					handleTimeWait(ep)
+					p.handleTimeWait(ep)
 				case state == StateListen:
-					handleListen(ep)
+					p.handleListen(ep)
 				case state == StateError || state == StateClose:
 					// Try to redeliver any still queued
 					// packets to another endpoint or send a
@@ -326,10 +326,9 @@ func (p *processor) start(wg *sync.WaitGroup) {
 				default:
 					panic(fmt.Sprintf("unexpected tcp state in processor: %v", state))
 				}
-				// If there are more segments to process and the
-				// endpoint lock is not held by user then
+				// If there are more segments to process then
 				// requeue this endpoint for processing.
-				if !ep.segmentQueue.empty() && !ep.isOwnedByUser() {
+				if !ep.segmentQueue.empty() {
 					p.epQ.enqueue(ep)
 				}
 			}
@@ -444,12 +443,7 @@ func (d *dispatcher) queuePacket(stackEP stack.TransportEndpoint, id stack.Trans
 		return
 	}
 
-	// Only wakeup the processor if endpoint lock is not held by a user
-	// goroutine as endpoint.UnlockUser will wake up the processor if the
-	// segment queue is not empty.
-	if !ep.isOwnedByUser() {
-		d.selectProcessor(id).queueEndpoint(ep)
-	}
+	d.selectProcessor(id).queueEndpoint(ep)
 }
 
 // selectProcessor uses a hash of the transport endpoint ID to queue the
@@ -504,7 +498,7 @@ func (j jenkinsHasher) hash(id stack.TransportEndpointID) uint32 {
 
 	h := jenkins.Sum32(j.seed)
 	h.Write(payload[:])
-	h.Write(id.LocalAddress.AsSlice())
-	h.Write(id.RemoteAddress.AsSlice())
+	h.Write([]byte(id.LocalAddress))
+	h.Write([]byte(id.RemoteAddress))
 	return h.Sum32()
 }

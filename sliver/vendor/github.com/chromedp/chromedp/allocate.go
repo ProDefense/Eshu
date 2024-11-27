@@ -527,8 +527,10 @@ func WSURLReadTimeout(t time.Duration) ExecAllocatorOption {
 // Use chromedp.NoModifyURL to prevent it from modifying the url.
 func NewRemoteAllocator(parent context.Context, url string, opts ...RemoteAllocatorOption) (context.Context, context.CancelFunc) {
 	a := &RemoteAllocator{
-		wsURL:         url,
-		modifyURLFunc: modifyURL,
+		wsURL: url,
+		modifyURLFunc: func(ctx context.Context, wsURL string) (string, error) {
+			return modifyURL(ctx, wsURL)
+		},
 	}
 	for _, o := range opts {
 		o(a)

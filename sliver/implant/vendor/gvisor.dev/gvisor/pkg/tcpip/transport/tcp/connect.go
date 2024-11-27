@@ -22,7 +22,6 @@ import (
 
 	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 	"gvisor.dev/gvisor/pkg/tcpip/hash/jenkins"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/seqnum"
@@ -128,15 +127,9 @@ func maybeFailTimerHandler(e *endpoint, f func() tcpip.Error) func() {
 		e.mu.Lock()
 		if err := f(); err != nil {
 			e.lastErrorMu.Lock()
-			// If the handler timed out and we have a lastError recorded (maybe due
-			// to an ICMP message received), promote it to be the hard error.
-			if _, isTimeout := err.(*tcpip.ErrTimeout); e.lastError != nil && isTimeout {
-				e.hardError = e.lastError
-			} else {
-				e.hardError = err
-			}
 			e.lastError = err
 			e.lastErrorMu.Unlock()
+			e.hardError = err
 			e.cleanupLocked()
 			e.setEndpointState(StateError)
 			e.mu.Unlock()
@@ -240,8 +233,8 @@ func generateSecureISN(id stack.TransportEndpointID, clock tcpip.Clock, seed uin
 	// Per hash.Hash.Writer:
 	//
 	// It never returns an error.
-	_, _ = isnHasher.Write(id.LocalAddress.AsSlice())
-	_, _ = isnHasher.Write(id.RemoteAddress.AsSlice())
+	_, _ = isnHasher.Write([]byte(id.LocalAddress))
+	_, _ = isnHasher.Write([]byte(id.RemoteAddress))
 	portBuf := make([]byte, 2)
 	binary.LittleEndian.PutUint16(portBuf, id.LocalPort)
 	_, _ = isnHasher.Write(portBuf)
@@ -717,7 +710,7 @@ func parseSynSegmentOptions(s *segment) header.TCPSynOptions {
 }
 
 var optionPool = sync.Pool{
-	New: func() any {
+	New: func() interface{} {
 		return &[maxOptionSize]byte{}
 	},
 }
@@ -811,7 +804,7 @@ func (e *endpoint) sendSynTCP(r *stack.Route, tf tcpFields, opts header.TCPSynOp
 }
 
 // This method takes ownership of pkt.
-func (e *endpoint) sendTCP(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso stack.GSO) tcpip.Error {
+func (e *endpoint) sendTCP(r *stack.Route, tf tcpFields, pkt *stack.PacketBuffer, gso stack.GSO) tcpip.Error {
 	tf.txHash = e.txHash
 	if err := sendTCP(r, tf, pkt, gso, e.owner); err != nil {
 		e.stats.SendErrors.SegmentSendToNetworkFailed.Increment()
@@ -821,7 +814,7 @@ func (e *endpoint) sendTCP(r *stack.Route, tf tcpFields, pkt stack.PacketBufferP
 	return nil
 }
 
-func buildTCPHdr(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso stack.GSO) {
+func buildTCPHdr(r *stack.Route, tf tcpFields, pkt *stack.PacketBuffer, gso stack.GSO) {
 	optLen := len(tf.opts)
 	tcp := header.TCP(pkt.TransportHeader().Push(header.TCPMinimumSize + optLen))
 	pkt.TransportProtocolNumber = header.TCPProtocolNumber
@@ -845,12 +838,12 @@ func buildTCPHdr(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso st
 		// header and data and get the right sum of the TCP packet.
 		tcp.SetChecksum(xsum)
 	} else if r.RequiresTXTransportChecksum() {
-		xsum = checksum.Combine(xsum, pkt.Data().Checksum())
+		xsum = header.ChecksumCombine(xsum, pkt.Data().AsRange().Checksum())
 		tcp.SetChecksum(^tcp.CalculateChecksum(xsum))
 	}
 }
 
-func sendTCPBatch(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso stack.GSO, owner tcpip.PacketOwner) tcpip.Error {
+func sendTCPBatch(r *stack.Route, tf tcpFields, pkt *stack.PacketBuffer, gso stack.GSO, owner tcpip.PacketOwner) tcpip.Error {
 	optLen := len(tf.opts)
 	if tf.rcvWnd > math.MaxUint16 {
 		tf.rcvWnd = math.MaxUint16
@@ -901,7 +894,7 @@ func sendTCPBatch(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso s
 // sendTCP sends a TCP segment with the provided options via the provided
 // network endpoint and under the provided identity. This method takes
 // ownership of pkt.
-func sendTCP(r *stack.Route, tf tcpFields, pkt stack.PacketBufferPtr, gso stack.GSO, owner tcpip.PacketOwner) tcpip.Error {
+func sendTCP(r *stack.Route, tf tcpFields, pkt *stack.PacketBuffer, gso stack.GSO, owner tcpip.PacketOwner) tcpip.Error {
 	if tf.rcvWnd > math.MaxUint16 {
 		tf.rcvWnd = math.MaxUint16
 	}
@@ -974,7 +967,7 @@ func (e *endpoint) sendEmptyRaw(flags header.TCPFlags, seq, ack seqnum.Value, rc
 
 // sendRaw sends a TCP segment to the endpoint's peer. This method takes
 // ownership of pkt. pkt must not have any headers set.
-func (e *endpoint) sendRaw(pkt stack.PacketBufferPtr, flags header.TCPFlags, seq, ack seqnum.Value, rcvWnd seqnum.Size) tcpip.Error {
+func (e *endpoint) sendRaw(pkt *stack.PacketBuffer, flags header.TCPFlags, seq, ack seqnum.Value, rcvWnd seqnum.Size) tcpip.Error {
 	var sackBlocks []header.SACKBlock
 	if e.EndpointState() == StateEstablished && e.rcv.pendingRcvdSegments.Len() > 0 && (flags&header.TCPFlagAck != 0) {
 		sackBlocks = e.sack.Blocks[:e.sack.NumBlocks]
@@ -1070,7 +1063,7 @@ func (e *endpoint) transitionToStateCloseLocked() {
 // to any other listening endpoint. We reply with RST if we cannot find one.
 func (e *endpoint) tryDeliverSegmentFromClosedEndpoint(s *segment) {
 	ep := e.stack.FindTransportEndpoint(e.NetProto, e.TransProto, e.TransportEndpointInfo.ID, s.pkt.NICID)
-	if ep == nil && e.NetProto == header.IPv6ProtocolNumber && e.TransportEndpointInfo.ID.LocalAddress.To4() != (tcpip.Address{}) {
+	if ep == nil && e.NetProto == header.IPv6ProtocolNumber && e.TransportEndpointInfo.ID.LocalAddress.To4() != "" {
 		// Dual-stack socket, try IPv4.
 		ep = e.stack.FindTransportEndpoint(
 			header.IPv4ProtocolNumber,
@@ -1398,13 +1391,13 @@ func (e *endpoint) handleTimeWaitSegments() (extendTimeWait bool, reuseTW func()
 		if newSyn {
 			info := e.TransportEndpointInfo
 			newID := info.ID
-			newID.RemoteAddress = tcpip.Address{}
+			newID.RemoteAddress = ""
 			newID.RemotePort = 0
 			netProtos := []tcpip.NetworkProtocolNumber{info.NetProto}
 			// If the local address is an IPv4 address then also
 			// look for IPv6 dual stack endpoints that might be
 			// listening on the local address.
-			if newID.LocalAddress.To4() != (tcpip.Address{}) {
+			if newID.LocalAddress.To4() != "" {
 				netProtos = []tcpip.NetworkProtocolNumber{header.IPv4ProtocolNumber, header.IPv6ProtocolNumber}
 			}
 			for _, netProto := range netProtos {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 
@@ -37,8 +38,7 @@ var (
 	textTailErrUpgradeRequired        = errorText(ErrHandshakeUpgradeRequired)
 )
 
-const (
-	// Every new header must be added to TestHeaderNames test.
+var (
 	headerHost          = "Host"
 	headerUpgrade       = "Upgrade"
 	headerConnection    = "Connection"
@@ -48,14 +48,14 @@ const (
 	headerSecKey        = "Sec-WebSocket-Key"
 	headerSecAccept     = "Sec-WebSocket-Accept"
 
-	headerHostCanonical          = headerHost
-	headerUpgradeCanonical       = headerUpgrade
-	headerConnectionCanonical    = headerConnection
-	headerSecVersionCanonical    = "Sec-Websocket-Version"
-	headerSecProtocolCanonical   = "Sec-Websocket-Protocol"
-	headerSecExtensionsCanonical = "Sec-Websocket-Extensions"
-	headerSecKeyCanonical        = "Sec-Websocket-Key"
-	headerSecAcceptCanonical     = "Sec-Websocket-Accept"
+	headerHostCanonical          = textproto.CanonicalMIMEHeaderKey(headerHost)
+	headerUpgradeCanonical       = textproto.CanonicalMIMEHeaderKey(headerUpgrade)
+	headerConnectionCanonical    = textproto.CanonicalMIMEHeaderKey(headerConnection)
+	headerSecVersionCanonical    = textproto.CanonicalMIMEHeaderKey(headerSecVersion)
+	headerSecProtocolCanonical   = textproto.CanonicalMIMEHeaderKey(headerSecProtocol)
+	headerSecExtensionsCanonical = textproto.CanonicalMIMEHeaderKey(headerSecExtensions)
+	headerSecKeyCanonical        = textproto.CanonicalMIMEHeaderKey(headerSecKey)
+	headerSecAcceptCanonical     = textproto.CanonicalMIMEHeaderKey(headerSecAccept)
 )
 
 var (
@@ -91,8 +91,10 @@ func httpParseRequestLine(line []byte) (req httpRequestLine, err error) {
 	req.major, req.minor, ok = httpParseVersion(proto)
 	if !ok {
 		err = ErrMalformedRequest
+		return
 	}
-	return req, err
+
+	return
 }
 
 func httpParseResponseLine(line []byte) (resp httpResponseLine, err error) {
@@ -126,25 +128,25 @@ func httpParseVersion(bts []byte) (major, minor int, ok bool) {
 	case bytes.Equal(bts, httpVersion1_1):
 		return 1, 1, true
 	case len(bts) < 8:
-		return 0, 0, false
+		return
 	case !bytes.Equal(bts[:5], httpVersionPrefix):
-		return 0, 0, false
+		return
 	}
 
 	bts = bts[5:]
 
 	dot := bytes.IndexByte(bts, '.')
 	if dot == -1 {
-		return 0, 0, false
+		return
 	}
 	var err error
 	major, err = asciiToInt(bts[:dot])
 	if err != nil {
-		return major, 0, false
+		return
 	}
 	minor, err = asciiToInt(bts[dot+1:])
 	if err != nil {
-		return major, minor, false
+		return
 	}
 
 	return major, minor, true
@@ -155,7 +157,7 @@ func httpParseVersion(bts []byte) (major, minor int, ok bool) {
 func httpParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 	colon := bytes.IndexByte(line, ':')
 	if colon == -1 {
-		return nil, nil, false
+		return
 	}
 
 	k = btrim(line[:colon])
@@ -196,9 +198,8 @@ func strSelectProtocol(h string, check func(string) bool) (ret string, ok bool) 
 		}
 		return true
 	})
-	return ret, ok
+	return
 }
-
 func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) {
 	var selected []byte
 	ok = httphead.ScanTokens(h, func(v []byte) bool {
@@ -211,7 +212,7 @@ func btsSelectProtocol(h []byte, check func([]byte) bool) (ret string, ok bool) 
 	if ok && selected != nil {
 		return string(selected), true
 	}
-	return ret, ok
+	return
 }
 
 func btsSelectExtensions(h []byte, selected []httphead.Option, check func(httphead.Option) bool) ([]httphead.Option, bool) {
@@ -286,16 +287,12 @@ func httpWriteUpgradeRequest(
 	protocols []string,
 	extensions []httphead.Option,
 	header HandshakeHeader,
-	host string,
 ) {
 	bw.WriteString("GET ")
 	bw.WriteString(u.RequestURI())
 	bw.WriteString(" HTTP/1.1\r\n")
 
-	if host == "" {
-		host = u.Host
-	}
-	httpWriteHeader(bw, headerHost, host)
+	httpWriteHeader(bw, headerHost, u.Host)
 
 	httpWriteHeaderBts(bw, headerUpgrade, specHeaderValueUpgrade)
 	httpWriteHeaderBts(bw, headerConnection, specHeaderValueConnection)

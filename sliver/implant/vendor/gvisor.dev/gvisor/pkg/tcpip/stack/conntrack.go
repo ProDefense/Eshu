@@ -139,7 +139,7 @@ type conn struct {
 	// Holds a finalizeResult.
 	finalizeResult atomicbitops.Uint32
 
-	mu connRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// sourceManip indicates the source manipulation type.
 	//
 	// +checklocks:mu
@@ -149,7 +149,7 @@ type conn struct {
 	// +checklocks:mu
 	destinationManip manipType
 
-	stateMu stateConnRWMutex `state:"nosave"`
+	stateMu sync.RWMutex `state:"nosave"`
 	// tcb is TCB control block. It is used to keep track of states
 	// of tcp connection.
 	//
@@ -177,7 +177,7 @@ func (cn *conn) timedOut(now tcpip.MonotonicTime) bool {
 }
 
 // update the connection tracking state.
-func (cn *conn) update(pkt PacketBufferPtr, reply bool) {
+func (cn *conn) update(pkt *PacketBuffer, reply bool) {
 	cn.stateMu.Lock()
 	defer cn.stateMu.Unlock()
 
@@ -230,7 +230,7 @@ type ConnTrack struct {
 	clock tcpip.Clock
 	rand  *rand.Rand
 
-	mu connTrackRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// mu protects the buckets slice, but not buckets' contents. Only take
 	// the write lock if you are modifying the slice or saving for S/R.
 	//
@@ -240,7 +240,7 @@ type ConnTrack struct {
 
 // +stateify savable
 type bucket struct {
-	mu bucketRWMutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	tuples tupleList
 }
@@ -269,7 +269,7 @@ func v6NetAndTransHdr(icmpPayload []byte, minTransHdrLen int) (header.Network, [
 	return netHdr, transHdr[:minTransHdrLen]
 }
 
-func getEmbeddedNetAndTransHeaders(pkt PacketBufferPtr, netHdrLength int, getNetAndTransHdr netAndTransHeadersFunc, transProto tcpip.TransportProtocolNumber) (header.Network, header.ChecksummableTransport, bool) {
+func getEmbeddedNetAndTransHeaders(pkt *PacketBuffer, netHdrLength int, getNetAndTransHdr netAndTransHeadersFunc, transProto tcpip.TransportProtocolNumber) (header.Network, header.ChecksummableTransport, bool) {
 	switch transProto {
 	case header.TCPProtocolNumber:
 		if netAndTransHeader, ok := pkt.Data().PullUp(netHdrLength + header.TCPMinimumSize); ok {
@@ -285,7 +285,7 @@ func getEmbeddedNetAndTransHeaders(pkt PacketBufferPtr, netHdrLength int, getNet
 	return nil, nil, false
 }
 
-func getHeaders(pkt PacketBufferPtr) (netHdr header.Network, transHdr header.Transport, isICMPError bool, ok bool) {
+func getHeaders(pkt *PacketBuffer) (netHdr header.Network, transHdr header.Transport, isICMPError bool, ok bool) {
 	switch pkt.TransportProtocolNumber {
 	case header.TCPProtocolNumber:
 		if tcpHeader := header.TCP(pkt.TransportHeader().Slice()); len(tcpHeader) >= header.TCPMinimumSize {
@@ -373,7 +373,7 @@ func getTupleIDForRegularPacket(netHdr header.Network, netProto tcpip.NetworkPro
 	}
 }
 
-func getTupleIDForPacketInICMPError(pkt PacketBufferPtr, getNetAndTransHdr netAndTransHeadersFunc, netProto tcpip.NetworkProtocolNumber, netLen int, transProto tcpip.TransportProtocolNumber) (tupleID, bool) {
+func getTupleIDForPacketInICMPError(pkt *PacketBuffer, getNetAndTransHdr netAndTransHeadersFunc, netProto tcpip.NetworkProtocolNumber, netLen int, transProto tcpip.TransportProtocolNumber) (tupleID, bool) {
 	if netHdr, transHdr, ok := getEmbeddedNetAndTransHeaders(pkt, netLen, getNetAndTransHdr, transProto); ok {
 		return tupleID{
 			srcAddr:                   netHdr.DestinationAddress(),
@@ -396,7 +396,7 @@ const (
 	getTupleIDOKAndDontAllowNewConn
 )
 
-func getTupleIDForEchoPacket(pkt PacketBufferPtr, ident uint16, request bool) tupleID {
+func getTupleIDForEchoPacket(pkt *PacketBuffer, ident uint16, request bool) tupleID {
 	netHdr := pkt.Network()
 	tid := tupleID{
 		srcAddr:    netHdr.SourceAddress(),
@@ -414,7 +414,7 @@ func getTupleIDForEchoPacket(pkt PacketBufferPtr, ident uint16, request bool) tu
 	return tid
 }
 
-func getTupleID(pkt PacketBufferPtr) (tupleID, getTupleIDDisposition) {
+func getTupleID(pkt *PacketBuffer) (tupleID, getTupleIDDisposition) {
 	switch pkt.TransportProtocolNumber {
 	case header.TCPProtocolNumber:
 		if transHeader := header.TCP(pkt.TransportHeader().Slice()); len(transHeader) >= header.TCPMinimumSize {
@@ -504,7 +504,7 @@ func (ct *ConnTrack) init() {
 //
 // If the packet's protocol is trackable, the connection's state is updated to
 // match the contents of the packet.
-func (ct *ConnTrack) getConnAndUpdate(pkt PacketBufferPtr, skipChecksumValidation bool) *tuple {
+func (ct *ConnTrack) getConnAndUpdate(pkt *PacketBuffer, skipChecksumValidation bool) *tuple {
 	// Get or (maybe) create a connection.
 	t := func() *tuple {
 		var allowNewConn bool
@@ -526,30 +526,32 @@ func (ct *ConnTrack) getConnAndUpdate(pkt PacketBufferPtr, skipChecksumValidatio
 		case header.TCPProtocolNumber:
 			_, csumValid, ok := header.TCPValid(
 				header.TCP(pkt.TransportHeader().Slice()),
-				func() uint16 { return pkt.Data().Checksum() },
+				func() uint16 { return pkt.Data().AsRange().Checksum() },
 				uint16(pkt.Data().Size()),
 				tid.srcAddr,
 				tid.dstAddr,
-				pkt.RXChecksumValidated || skipChecksumValidation)
+				pkt.RXTransportChecksumValidated || skipChecksumValidation)
 			if !csumValid || !ok {
 				return nil
 			}
 		case header.UDPProtocolNumber:
 			lengthValid, csumValid := header.UDPValid(
 				header.UDP(pkt.TransportHeader().Slice()),
-				func() uint16 { return pkt.Data().Checksum() },
+				func() uint16 { return pkt.Data().AsRange().Checksum() },
 				uint16(pkt.Data().Size()),
 				pkt.NetworkProtocolNumber,
 				tid.srcAddr,
 				tid.dstAddr,
-				pkt.RXChecksumValidated || skipChecksumValidation)
+				pkt.RXTransportChecksumValidated || skipChecksumValidation)
 			if !lengthValid || !csumValid {
 				return nil
 			}
 		}
 
+		bktID := ct.bucket(tid)
+
 		ct.mu.RLock()
-		bkt := &ct.buckets[ct.bucket(tid)]
+		bkt := &ct.buckets[bktID]
 		ct.mu.RUnlock()
 
 		now := ct.clock.NowMonotonic()
@@ -601,8 +603,10 @@ func (ct *ConnTrack) getConnAndUpdate(pkt PacketBufferPtr, skipChecksumValidatio
 }
 
 func (ct *ConnTrack) connForTID(tid tupleID) *tuple {
+	bktID := ct.bucket(tid)
+
 	ct.mu.RLock()
-	bkt := &ct.buckets[ct.bucket(tid)]
+	bkt := &ct.buckets[bktID]
 	ct.mu.RUnlock()
 
 	return bkt.connForTID(tid, ct.clock.NowMonotonic())
@@ -631,7 +635,7 @@ func (ct *ConnTrack) finalize(cn *conn) finalizeResult {
 
 	{
 		tid := cn.reply.tupleID
-		id := ct.bucketWithTableLength(tid, len(buckets))
+		id := ct.bucket(tid)
 
 		bkt := &buckets[id]
 		bkt.mu.Lock()
@@ -659,7 +663,7 @@ func (ct *ConnTrack) finalize(cn *conn) finalizeResult {
 	// better.
 
 	tid := cn.original.tupleID
-	id := ct.bucketWithTableLength(tid, len(buckets))
+	id := ct.bucket(tid)
 	bkt := &buckets[id]
 	bkt.mu.Lock()
 	defer bkt.mu.Unlock()
@@ -725,7 +729,7 @@ type portOrIdentRange struct {
 //
 // Generally, only the first packet of a connection reaches this method; other
 // packets will be manipulated without needing to modify the connection.
-func (cn *conn) performNAT(pkt PacketBufferPtr, hook Hook, r *Route, portsOrIdents portOrIdentRange, natAddress tcpip.Address, dnat bool) {
+func (cn *conn) performNAT(pkt *PacketBuffer, hook Hook, r *Route, portsOrIdents portOrIdentRange, natAddress tcpip.Address, dnat bool) {
 	lastPortOrIdent := func() uint16 {
 		lastPortOrIdent := uint32(portsOrIdents.start) + portsOrIdents.size - 1
 		if lastPortOrIdent > math.MaxUint16 {
@@ -826,7 +830,7 @@ func (cn *conn) performNAT(pkt PacketBufferPtr, hook Hook, r *Route, portsOrIden
 // has had NAT performed on it.
 //
 // Returns true if the packet can skip the NAT table.
-func (cn *conn) handlePacket(pkt PacketBufferPtr, hook Hook, rt *Route) bool {
+func (cn *conn) handlePacket(pkt *PacketBuffer, hook Hook, rt *Route) bool {
 	netHdr, transHdr, isICMPError, ok := getHeaders(pkt)
 	if !ok {
 		return false
@@ -933,7 +937,7 @@ func (cn *conn) handlePacket(pkt PacketBufferPtr, hook Hook, rt *Route) bool {
 		icmp := header.ICMPv4(pkt.TransportHeader().Slice())
 		// TODO(https://gvisor.dev/issue/6788): Incrementally update ICMP checksum.
 		icmp.SetChecksum(0)
-		icmp.SetChecksum(header.ICMPv4Checksum(icmp, pkt.Data().Checksum()))
+		icmp.SetChecksum(header.ICMPv4Checksum(icmp, pkt.Data().AsRange().Checksum()))
 
 		network := header.IPv4(pkt.NetworkHeader().Slice())
 		if dnat {
@@ -959,7 +963,7 @@ func (cn *conn) handlePacket(pkt PacketBufferPtr, hook Hook, rt *Route) bool {
 			Header:      icmp,
 			Src:         srcAddr,
 			Dst:         dstAddr,
-			PayloadCsum: payload.Checksum(),
+			PayloadCsum: payload.AsRange().Checksum(),
 			PayloadLen:  payload.Size(),
 		}))
 
@@ -974,15 +978,10 @@ func (cn *conn) handlePacket(pkt PacketBufferPtr, hook Hook, rt *Route) bool {
 }
 
 // bucket gets the conntrack bucket for a tupleID.
-// +checklocksread:ct.mu
 func (ct *ConnTrack) bucket(id tupleID) int {
-	return ct.bucketWithTableLength(id, len(ct.buckets))
-}
-
-func (ct *ConnTrack) bucketWithTableLength(id tupleID, tableLength int) int {
 	h := jenkins.Sum32(ct.seed)
-	h.Write(id.srcAddr.AsSlice())
-	h.Write(id.dstAddr.AsSlice())
+	h.Write([]byte(id.srcAddr))
+	h.Write([]byte(id.dstAddr))
 	shortBuf := make([]byte, 2)
 	binary.LittleEndian.PutUint16(shortBuf, id.srcPortOrEchoRequestIdent)
 	h.Write([]byte(shortBuf))
@@ -992,7 +991,9 @@ func (ct *ConnTrack) bucketWithTableLength(id tupleID, tableLength int) int {
 	h.Write([]byte(shortBuf))
 	binary.LittleEndian.PutUint16(shortBuf, uint16(id.netProto))
 	h.Write([]byte(shortBuf))
-	return int(h.Sum32()) % tableLength
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
+	return int(h.Sum32()) % len(ct.buckets)
 }
 
 // reapUnused deletes timed out entries from the conntrack map. The rules for
@@ -1097,9 +1098,9 @@ func (ct *ConnTrack) reapTupleLocked(reapingTuple *tuple, bktID int, bkt *bucket
 		bkt.tuples.Remove(otherTuple)
 	} else {
 		otherTupleBkt := &ct.buckets[otherTupleBktID]
-		otherTupleBkt.mu.NestedLock(bucketLockOthertuple)
+		otherTupleBkt.mu.Lock()
 		otherTupleBkt.tuples.Remove(otherTuple)
-		otherTupleBkt.mu.NestedUnlock(bucketLockOthertuple)
+		otherTupleBkt.mu.Unlock()
 	}
 
 	return true
@@ -1119,14 +1120,14 @@ func (ct *ConnTrack) originalDst(epID TransportEndpointID, netProto tcpip.Networ
 	t := ct.connForTID(tid)
 	if t == nil {
 		// Not a tracked connection.
-		return tcpip.Address{}, 0, &tcpip.ErrNotConnected{}
+		return "", 0, &tcpip.ErrNotConnected{}
 	}
 
 	t.conn.mu.RLock()
 	defer t.conn.mu.RUnlock()
 	if t.conn.destinationManip == manipNotPerformed {
 		// Unmanipulated destination.
-		return tcpip.Address{}, 0, &tcpip.ErrInvalidOptionValue{}
+		return "", 0, &tcpip.ErrInvalidOptionValue{}
 	}
 
 	id := t.conn.original.tupleID

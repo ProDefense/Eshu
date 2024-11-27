@@ -24,14 +24,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
 	"github.com/bishopfox/sliver/client/console"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/desertbit/grumble"
 )
 
 // BeaconsWatchCmd - Watch your beacons in real-ish time
-func BeaconsWatchCmd(cmd *cobra.Command, con *console.SliverClient, args []string) {
+func BeaconsWatchCmd(ctx *grumble.Context, con *console.SliverConsoleClient) {
 	done := waitForInput()
 	defer func() {
 		con.Printf(console.UpN+console.Clearln+"\r", 1)

@@ -27,11 +27,10 @@ import (
 	"os"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-
 	"github.com/bishopfox/sliver/client/assets"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 const (
@@ -40,7 +39,7 @@ const (
 	gb = mb * 1024
 
 	// ClientMaxReceiveMessageSize - Max gRPC message size ~2Gb
-	ClientMaxReceiveMessageSize = (2 * gb) - 1 // 2Gb - 1 byte
+	ClientMaxReceiveMessageSize = 2 * gb
 
 	defaultTimeout = time.Duration(10 * time.Second)
 )

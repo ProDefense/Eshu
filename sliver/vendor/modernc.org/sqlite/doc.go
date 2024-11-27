@@ -8,72 +8,38 @@
 // SQLite is an in-process implementation of a self-contained, serverless,
 // zero-configuration, transactional SQL database engine.
 //
-// # Thanks
+// Thanks
 //
 // This project is sponsored by Schleibinger Geräte Teubert u. Greim GmbH by
 // allowing one of the maintainers to work on it also in office hours.
 //
-// # Supported platforms and architectures
+// Supported platforms and architectures
 //
 // These combinations of GOOS and GOARCH are currently supported
 //
 //	OS      Arch    SQLite version
 //	------------------------------
-//	darwin	amd64   3.46.0
-//	darwin	arm64   3.46.0
-//	freebsd	amd64   3.46.0
-//	freebsd	arm64   3.46.0
-//	linux	386     3.46.0
-//	linux	amd64   3.46.0
-//	linux	arm     3.46.0
-//	linux	arm64   3.46.0
-//	linux	loong64 3.46.0
-//	linux	ppc64le 3.46.0
-//	linux	riscv64 3.46.0
-//	linux	s390x   3.46.0
-//	windows	amd64   3.46.0
-//	windows	arm64   3.46.0
+//	darwin	amd64   3.41.2
+//	darwin	arm64   3.41.2
+//	freebsd	amd64   3.41.2
+//	freebsd	arm64   3.41.2
+//	linux	386     3.41.2
+//	linux	amd64   3.41.2
+//	linux	arm     3.41.2
+//	linux	arm64   3.41.2
+//	linux	ppc64le 3.41.2
+//	linux	riscv64 3.41.2
+//	linux	s390x   3.41.2
+//	windows	amd64   3.41.2
+//	windows	arm64   3.41.2
 //
-// # Builders
+// Builders
 //
-// Builder results available at:
+// Builder results available at
 //
 // https://modern-c.appspot.com/-/builder/?importpath=modernc.org%2fsqlite
 //
-// # Fragile modernc.org/libc dependency
-//
-// When you import this package you should use in your go.mod file the exact
-// same version of modernc.org/libc as seen in the go.mod file of this
-// repository.
-//
-// See the discussion at https://gitlab.com/cznic/sqlite/-/issues/177 for more details.
-//
-// # Changelog
-//
-// 2024-06-04: v1.30.0
-//
-// Upgrade to SQLite 3.46.0, release notes at https://sqlite.org/releaselog/3_46_0.html.
-//
-// 2024-02-13: v1.29.0
-//
-// Upgrade to SQLite 3.45.1, release notes at https://sqlite.org/releaselog/3_45_1.html.
-//
-// 2023-12-14 v1.28.0:
-//
-//	(*Driver).RegisterConnectionHook: added
-//	ConnectionHookFn: added
-//	ExecQuerierContext: added
-//	RegisterConnectionHook: added
-//
-// 2023-08-03 v1.25.0: enable SQLITE_ENABLE_DBSTAT_VTAB.
-//
-// 2023-07-11 v1.24.0:
-//
-// Add (*conn).{Serialize,Deserialize,NewBackup,NewRestore} methods, add Backup type.
-//
-// 2023-06-01 v1.23.0:
-//
-// Allow registering aggregate functions.
+// Changelog
 //
 // 2023-04-22 v1.22.0:
 //
@@ -104,7 +70,7 @@
 //
 // Support scalar application defined functions written in Go.
 //
-//	https://www.sqlite.org/appfunc.html
+//  https://www.sqlite.org/appfunc.html
 //
 // 2022-03-13 v1.15.0:
 //
@@ -118,6 +84,8 @@
 // 2021-09-07 v1.13.0:
 //
 // Support freebsd/amd64.
+//
+// Changelog
 //
 // 2021-06-23 v1.11.0:
 //
@@ -206,7 +174,7 @@
 //
 // 2017-06-05 Linux/Intel no more uses the VM (cznic/virtual).
 //
-// # Connecting to a database
+// Connecting to a database
 //
 // To access a Sqlite database do something like
 //
@@ -223,7 +191,7 @@
 //
 //	...
 //
-// # Debug and development versions
+// Debug and development versions
 //
 // A comma separated list of options can be passed to `go generate` via the
 // environment variable GO_GENERATE. Some useful options include for example:
@@ -238,9 +206,10 @@
 //
 // Note: To run `go generate` you need to have modernc.org/ccgo/v3 installed.
 //
-// # Hacking
+// Hacking
 //
 // This is an example of how to use the debug logs in modernc.org/libc when hunting a bug.
+//
 //
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$ git status
 //	On branch master
@@ -264,7 +233,9 @@
 //	[10723 sqlite.test] 2023-04-06 11:22:48.288066057 +0200 CEST m=+0.000707150
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$
 //
+//
 // The /tmp/libc.log file is created as requested. No useful messages there because none are enabled in libc. Let's try to enable Xwrite as an example.
+//
 //
 //	0:jnml@e5-1650:~/src/modernc.org/libc$ git status
 //	On branch master
@@ -316,39 +287,42 @@
 //	 }
 //	0:jnml@e5-1650:~/src/modernc.org/libc$
 //
+//
 // We need to tell the Go build system to use our local, patched/debug libc:
+//
 //
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$ go work use $(go env GOPATH)/src/modernc.org/libc
 //	0:jnml@e5-1650:~/src/modernc.org/sqlite$ go work use .
 //
+//
 // And run the test again:
 //
-//	0:jnml@e5-1650:~/src/modernc.org/sqlite$ rm -f /tmp/libc.log ; go test -v -tags=libc.dmesg -run TestScalar ; ls -l /tmp/libc.log
-//	test binary compiled for linux/amd64
-//	=== RUN   TestScalar
-//	--- PASS: TestScalar (0.26s)
-//	PASS
-//	ok   modernc.org/sqlite 0.285s
-//	-rw-r--r-- 1 jnml jnml 918 Apr  6 11:29 /tmp/libc.log
-//	0:jnml@e5-1650:~/src/modernc.org/sqlite$ cat /tmp/libc.log
-//	[11910 sqlite.test] 2023-04-06 11:29:13.143589542 +0200 CEST m=+0.000689270
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x200: 0x200
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0xc: 0xc
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x200: 0x200
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x1000: 0x1000
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x1000: 0x1000
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0xc: 0xc
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
-//	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
-//	0:jnml@e5-1650:~/src/modernc.org/sqlite$
+// 	0:jnml@e5-1650:~/src/modernc.org/sqlite$ rm -f /tmp/libc.log ; go test -v -tags=libc.dmesg -run TestScalar ; ls -l /tmp/libc.log
+// 	test binary compiled for linux/amd64
+// 	=== RUN   TestScalar
+// 	--- PASS: TestScalar (0.26s)
+// 	PASS
+// 	ok   modernc.org/sqlite 0.285s
+// 	-rw-r--r-- 1 jnml jnml 918 Apr  6 11:29 /tmp/libc.log
+// 	0:jnml@e5-1650:~/src/modernc.org/sqlite$ cat /tmp/libc.log
+// 	[11910 sqlite.test] 2023-04-06 11:29:13.143589542 +0200 CEST m=+0.000689270
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x200: 0x200
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0xc: 0xc
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x200: 0x200
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x1000: 0x1000
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x1000: 0x1000
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0x4: 0x4
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 8 0xc: 0xc
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
+// 	[11910 sqlite.test] libc_linux.go:337:Xwrite: 7 0x1000: 0x1000
+// 	0:jnml@e5-1650:~/src/modernc.org/sqlite$
 //
-// # Sqlite documentation
+// Sqlite documentation
 //
 // See https://sqlite.org/docs.html
 package sqlite // import "modernc.org/sqlite"

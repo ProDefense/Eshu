@@ -2,7 +2,7 @@
 
 Common Language Platform for multiple Command and Control Frameworks
 
-## To Start Sliver
+## To Build and Start Sliver C2
 
 Navigate to Sliver folder
 ```console
@@ -16,7 +16,23 @@ docker build -t sliver .
 
 Start Sliver
 ```console
-docker run -it sliver
+docker run --name sliver_conatiner -it sliver
+```
+
+To stop
+```console
+sliver > exit
+```
+
+To start up container and enter Sliver again
+```console
+docker start sliver_container
+docker exec -it sliver_container /opt/sliver-server
+```
+
+If you want to stop the container after exiting again
+```console
+docker stop sliver_container
 ```
 
 ## Testing Lab Setup

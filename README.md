@@ -1,8 +1,23 @@
-This is a branch for Sliver Server and API Implementation
-
 # Eshu Python Library v2
 
 Common Language Platform for multiple Command and Control Frameworks
+
+## To Start Sliver
+
+Navigate to Sliver folder
+```console
+cd Sliver
+```
+
+Build Sliver image
+```console
+docker build -t sliver .
+```
+
+Start Sliver
+```console
+docker run -it sliver
+```
 
 ## Testing Lab Setup
 
@@ -27,12 +42,6 @@ In the FIRST terminal:
 ```bash
 # launch metasploit
 msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
-```
-
-In the SECOND terminal:
-```bash
-# launch sliver
-/usr/local/bin/sliver-server
 ```
 
 In the THIRD terminal:

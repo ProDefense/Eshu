@@ -53,6 +53,8 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VER}
 # Go assets
 WORKDIR /go/src/github.com/bishopfox/sliver
 ADD . /go/src/github.com/bishopfox/sliver/
+RUN sed -i -e 's/\r$//' go-assets.sh
+RUN sed -i -e 's/\r$//' go-tests.sh
 RUN make clean-all
 RUN make \
     && cp -vv sliver-server /opt/sliver-server \

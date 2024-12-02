@@ -1,4 +1,4 @@
-# Eshu Python Library v2
+# Eshu Python Library v3
 
 Common Language Platform for multiple Command and Control Frameworks
 
@@ -34,21 +34,12 @@ docker compose up -d --build
 
 Then launch into the operator machine
 ```console
-# In three separate terminals
 docker exec -it operator /bin/bash
 ```
 
-In the FIRST terminal:
+In the terminal
 ```bash
-# launch metasploit
-msfconsole -r /usr/src/metasploit-framework/docker/msfconsole.rc
-```
-
-In the THIRD terminal:
-```bash
-# run operator script
-cd eshuCLP
-python main.py
+python eshuCLP/main.py
 ```
 
 To test network connection to vulnerable machine(VM)

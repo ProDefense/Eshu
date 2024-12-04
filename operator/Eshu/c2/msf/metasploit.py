@@ -5,20 +5,26 @@ import subprocess
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
 
 class Metasploit:
-    def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
+    def __init__(self, password, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
+        self.client = None
+        self.server = server
+        self.port = port
+        self.password = password
+        self.sessions = {}  # Store sessions locally within Metasploit
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
-        print(f"Starting {self.name}")
+        self.connect_to_msfserver()
+
+    def connect_to_msfserver(self):
+        """Connect to the MSF server."""
         while True:
             try:
-                self.client = MsfRpcClient(password, server=server, port=port)  # Fix: Ensure this import works
+                self.client = MsfRpcClient(self.password, server=self.server, port=self.port)
+                print("[+] Successfully connected to MSF Server!")
                 break
-            except:
-                print("[!] Failed. Trying again...")
+            except Exception as e:
+                print(f"[!] Failed to connect to MSF Server: {e}")
                 time.sleep(0.5)
-
-        print(f"[+] Successfully connected to MSF Server!")
-        self.eshu = Eshu
 
     def start_msfconsole_with_script(self, resource_script):
         """Start msfconsole with the specified resource script."""

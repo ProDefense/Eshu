@@ -8,7 +8,7 @@ class Metasploit:
     def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
-        print(f"=============== Starting {self.name} ================")
+        print(f"=============== Starting {self.name} ===============")
         while True:
             try:
                 self.client = MsfRpcClient(password, server=server, port=port)  # Fix: Ensure this import works

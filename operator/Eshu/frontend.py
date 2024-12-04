@@ -55,35 +55,36 @@ class Eshu:
                 print(f"[!] Error querying hosts in {framework}: {e}")
         return hosts
 
-    def run_cmd(self, commands=None, **hosts):
+    def run_cmd(self, commands=None, id=None, os=None):
         """
-        Run a command on specified host, agnostic of the underlying framework.
+        Run commands on a specific host.
         :param commands: List of commands to execute.
-        :param hosts: Host details, including 'id' and 'os'.
+        :param id: Host ID (e.g., "msf1").
+        :param os: Operating system of the target (optional).
         :return: Command outputs.
         """
-        if not commands:
-            raise ValueError("[!] Commands must be provided to execute.")
+        if not commands or not id:
+            raise ValueError("[!] Both commands and host ID must be provided.")
 
-        # Retrieve the corresponding C2 framework based on host ID
-        c2 = self.getC2(hosts["id"])
-
-        # Extract the session ID from the host info in `self.targets`
-        session_info = self.targets.get(hosts["id"])
+        # Retrieve session info from Eshu's centralized data
+        session_info = self.targets.get(id)
         if not session_info:
-            raise ValueError(f"[!] No host found with ID {hosts['id']}")
+            raise ValueError(f"[!] No session information found for host ID {id}.")
 
-        session_id = session_info.get("session_id")  # Ensure we extract the session ID correctly
-        if not session_id:
-            raise ValueError(f"[!] No session ID found for host ID {hosts['id']}")
+        # Identify the C2 framework responsible for the host
+        framework_name = self.getName(id)
+        c2_framework = self.c2s.get(framework_name)
+        if not c2_framework:
+            raise ValueError(f"[!] Framework {framework_name} not registered.")
 
-        # Forward the command execution to the appropriate C2
-        outputs = c2.send_cmd(id=hosts["id"], os=hosts.get("os", None), commands=commands)
+        # Pass the session data to the C2 framework for command execution
+        session_id = session_info.get("session_id")
+        outputs = c2_framework.send_cmd(session_id=session_id, os=os, commands=commands)
+        
         print("[+] Command response(s):")
         for response in outputs:
             print(f"\t{response}")
         return outputs
-
 
     def getC2(self, hostID):
         """Extract the C2 framework (name) from hostID and return the corresponding C2."""

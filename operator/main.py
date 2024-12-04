@@ -14,8 +14,9 @@ msfInstance = msf.Metasploit(password, e)
 e.register(name="msf", framework=msfInstance)
 #e.register(name="sliver", framework=sliverInstance)
 
+# LEAVE THIS OPTION
 #version1:
-# msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+#msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
 
 #version2:
 # Extracted Exploit Logic
@@ -36,7 +37,7 @@ def run_msf_exploit():
     exploit["THREADS"] = threads
 
     # Execute the exploit
-    print(f"Running exploit: {mname} on {rhosts}...")
+    print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
     result = exploit.execute()
     print("Exploit Result:", result)
     time.sleep(1)
@@ -46,7 +47,9 @@ def run_msf_exploit():
         print("[+] Exploit scan started successfully.")
         time.sleep(1)
     else:
-        print("[!] Exploit scan failed.")
+        print("[!] Scan failed.")
+        
+    print("Returning Exploit Result:", result)
     return result
 
 exploit_result = run_msf_exploit()

@@ -5,7 +5,7 @@ services:
   operator:
     build: 
       context: .
-      dockerfile: operator/Dockerfile
+      dockerfile: Dockerfile
     container_name: operator
     hostname: operator
     stdin_open: true
@@ -23,7 +23,7 @@ services:
   #    - LHOST=0.0.0.0
   #    - DATABASE_URL=
     volumes:
-      - ./operator/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
+      - ./src/config_files/msfconsole.rc:/usr/src/metasploit-framework/docker/msfconsole.rc:ro
   #   - ./operator/cnc/metasploit/data:/home/msf/.msf4  # Persistent storage for Metasploit    
     networks:
       localnet:

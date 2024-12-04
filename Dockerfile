@@ -40,7 +40,7 @@ RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit
 ENV PATH="/opt/metasploit-framework/:$PATH"
 
 # Run the msfconsole.rc commands and start Metasploit RPC service
-COPY ./operator/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
+COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
 
 # Commenting out this line because its un necessary if we are overriding the rc file anyway
 # Also environment args in dockercompose do not apply here, you will need to set build args for that to pass correctl.y
@@ -48,13 +48,10 @@ COPY ./operator/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.
 
 # Optionally, create a working directory
 WORKDIR /workspace/eshuCLP
-COPY ./operator/Eshu/ /workspace/eshuCLP/Eshu/
-COPY ./operator/config_files/ /workspace/eshuCLP/config_files/
-COPY ./operator/main.py /workspace/eshuCLP/main.py
-COPY ./operator/pyproject.toml /workspace/eshuCLP/pyproject.toml
+COPY ./src/ /workspace/eshuCLP/
 
 # Install Eshu using pip based on the pyproject.toml file
-RUN pip install .
+RUN pip install pyproject.toml
 
 WORKDIR /workspace
 

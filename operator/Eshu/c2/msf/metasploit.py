@@ -106,6 +106,7 @@ class Metasploit:
 
         # print(f"Type = {mtype} , name = {mname}")
         exploit = self.client.modules.use(mtype, mname)
+        # print(exploit.options)
         exploit["RHOSTS"] = '10.1.1.3/24'
         exploit["USERNAME"] = 'msfadmin'
         exploit["PASSWORD"] = 'msfadmin'

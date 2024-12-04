@@ -1,25 +1,33 @@
 import os
-import time  # Fix: Import time module
+import time
 import json
 import subprocess
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
+from ...baseC2.base_C2 import BaseC2
 
-class Metasploit:
+class Metasploit(BaseC2):
     _NAME = "msf"  # This defines the name of the C2 framework
-    def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
+    def __init__(self, password, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
+        self.client = None
+        self.server = server
+        self.port = port
+        self.password = password
+        self.sessions = {}  # Store sessions locally within Metasploit
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
+        self.connect_to_msfserver()
+
+    def connect_to_msfserver(self):
+        """Connect to the MSF server."""
         print(f"=============== Starting {self.name} ===============")
         while True:
             try:
-                self.client = MsfRpcClient(password, server=server, port=port)  # Fix: Ensure this import works
+                self.client = MsfRpcClient(self.password, server=self.server, port=self.port)
+                print("[+] Successfully connected to MSF Server!")
                 break
-            except:
-                print("[!] Failed. Trying again...")
+            except Exception as e:
+                print(f"[!] Failed to connect to MSF Server, RETRYING")
                 time.sleep(0.5)
-
-        print(f"[+] Successfully connected to MSF Server!")
-        self.eshu = Eshu
 
     def start_msfconsole_with_script(self, resource_script):
         """Start msfconsole with the specified resource script."""
@@ -54,7 +62,7 @@ class Metasploit:
             hosts.append(host_info)
             # Save host info to Eshu's targets
             host_id = f"msf{session_id}"
-            self.eshu.save_session(host_id, host_info)
+            # self.eshu.save_session(host_id, host_info)
         if hosts:
             print("[+] Active sessions retrieved:")
             for host in hosts:
@@ -63,18 +71,16 @@ class Metasploit:
             print("[!] No active sessions.")
         return hosts
 
-    def send_cmd(self, id=None, os=None, commands=[]):
-        if not id:
-            raise ValueError("[!] Host ID must be provided.")
-
-        # Retrieve the session information
-        session_info = self.eshu.targets.get(id)  # Retrieve host info
-        if not session_info:
-            raise ValueError(f"[!] Host ID {id} not found in targets.")
-
-        session_id = session_info.get("session_id")  # Get session ID from host info
+    def send_cmd(self, session_id=None, os=None, commands=[]):
+        """
+        Execute commands on a specific session in Metasploit.
+        :param session_id: Session ID for the target.
+        :param os: Operating system of the target (optional).
+        :param commands: List of commands to execute.
+        :return: Command outputs.
+        """
         if not session_id:
-            raise ValueError(f"[!] No session ID found for Host ID {id}.")
+            raise ValueError("[!] Session ID must be provided.")
 
         # Retrieve the session from Metasploit
         session = self.client.sessions.list.get(str(session_id))
@@ -90,10 +96,9 @@ class Metasploit:
         output = []
         for cmd in commands:
             try:
-                print(f"Sending command '{cmd}' to target with ID: {id}")
+                print(f"Sending command '{cmd}' to session {session_id}")
                 cmd_output = self.client.sessions.session(str(session_id)).run_with_output(cmd, end_strs=["$", "#", "\n"])
                 output.append(f"Output for {cmd}: {cmd_output}")
-                print(f"[+] Successfully executed command: {cmd}")
             except Exception as e:
                 output.append(f"[!] Error executing command '{cmd}': {e}")
         return output

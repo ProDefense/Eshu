@@ -7,7 +7,7 @@ e = Eshu.Eshu()
 
 # Set up Metasploit and Sliver instances
 password = "memes"
-msfInstance = msf.Metasploit(password, e)
+msfInstance = msf.Metasploit(password)
 #sliverInstance = sliver.Sliver()
 
 # Register Metasploit and Sliver with Eshu
@@ -39,11 +39,13 @@ def run_msf_exploit():
     # Execute the exploit
     print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
     result = exploit.execute()
+    print("Exploit Result:", result)
     time.sleep(1)
-    
+
     # Wait for scan completion
     if 'job_id' in result:
-        print("[+] Scan Complete!")
+        print("[+] Exploit scan started successfully.")
+        time.sleep(1)
     else:
         print("[!] Scan failed.")
         
@@ -51,6 +53,7 @@ def run_msf_exploit():
     return result
 
 exploit_result = run_msf_exploit()
+print(f"[++++] RESULT = {exploit_result}")
 
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks

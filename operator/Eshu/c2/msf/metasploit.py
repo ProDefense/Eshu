@@ -115,3 +115,24 @@ class Metasploit:
        if not self.client:
            raise ConnectionError("[!] Not connected")
        return self.client.modules.search(module_type)
+    
+    def run_exploit(self, mtype, mname):
+
+        # print(f"Type = {mtype} , name = {mname}")
+        exploit = self.client.modules.use(mtype, mname)
+        exploit["RHOSTS"] = '10.1.1.3/24'
+        exploit["USERNAME"] = 'msfadmin'
+        exploit["PASSWORD"] = 'msfadmin'
+        exploit["THREADS"] = 5 
+        print(f"Running exploit: {exploit} with 1 second scan...")
+        result = exploit.execute()
+        # print(result)
+        time.sleep(1)  # Allow time for the scan to run
+        
+        
+        if 'job_id' in result:
+            print("[+] Scan Complete!")
+            time.sleep(1)
+        # break
+        else:
+            print("[!] Scan failed. Retrying...")

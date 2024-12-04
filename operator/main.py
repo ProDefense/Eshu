@@ -1,5 +1,6 @@
 import Eshu
 from Eshu.c2 import msf, sliver
+import time
 
 # Initialize Eshu Instance
 e = Eshu.Eshu()
@@ -13,8 +14,9 @@ msfInstance = msf.Metasploit(password, e)
 e.register(name="msf", framework=msfInstance)
 #e.register(name="sliver", framework=sliverInstance)
 
+# LEAVE THIS OPTION
 #version1:
-# msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+#msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
 
 #version2:
 # Extracted Exploit Logic
@@ -35,15 +37,17 @@ def run_msf_exploit():
     exploit["THREADS"] = threads
 
     # Execute the exploit
-    print(f"Running exploit: {mname} on {rhosts}...")
+    print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
     result = exploit.execute()
-    print("Exploit Result:", result)
-
+    time.sleep(1)
+    
     # Wait for scan completion
-    if 'job_id' in result and result['job_id'] != 0:
-        print("[+] Exploit scan started successfully.")
+    if 'job_id' in result:
+        print("[+] Scan Complete!")
     else:
-        print("[!] Exploit scan failed.")
+        print("[!] Scan failed.")
+        
+    print("Returning Exploit Result:", result)
     return result
 
 exploit_result = run_msf_exploit()

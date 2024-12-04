@@ -1,5 +1,6 @@
 import Eshu
 from Eshu.c2 import msf, sliver
+import time
 
 # Initialize Eshu Instance
 e = Eshu.Eshu()
@@ -38,15 +39,18 @@ def run_msf_exploit():
     print(f"Running exploit: {mname} on {rhosts}...")
     result = exploit.execute()
     print("Exploit Result:", result)
+    time.sleep(1)
 
     # Wait for scan completion
-    if 'job_id' in result and result['job_id'] != 0:
+    if 'job_id' in result:
         print("[+] Exploit scan started successfully.")
+        time.sleep(1)
     else:
         print("[!] Exploit scan failed.")
     return result
 
 exploit_result = run_msf_exploit()
+print(f"[++++] RESULT = {exploit_result}")
 
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks

@@ -1,4 +1,5 @@
 import re
+from .baseC2.base_C2 import BaseC2
 
 class Eshu:
     def __init__(self):
@@ -15,13 +16,20 @@ class Eshu:
         """
         self.targets[session_name] = host_info
 
-    def register(self, **c2):
-        """
-        Register a C2 interface to be used.
-        :param c2: Dictionary containing C2 name and framework instance.
-        """
-        print(f"[+] Registered {c2['framework']} for {c2['name']}")
-        self.c2s[c2['name']] = c2['framework']
+    # def register(self, **c2):
+    #     """
+    #     Register a C2 interface to be used.
+    #     :param c2: Dictionary containing C2 name and framework instance.
+    #     """
+    #     print(f"[+] Registered {c2['framework']} for {c2['name']}")
+    #     self.c2s[c2['name']] = c2['framework']
+
+    def register(self, name, framework):
+        """Register a C2 framework."""
+        if not isinstance(framework, BaseC2):
+            raise ValueError("[!] Framework must be an instance of BaseC2.")
+        self.c2s[name] = framework
+        print(f"[+] Registered {framework.get_name()} as {name}")
 
     def get_hosts(self, *frameworks):
         """
@@ -38,8 +46,10 @@ class Eshu:
                 for host in framework_hosts:
                     session_id = host.get("session_id")
                     host_id = f"{framework}{session_id}"  # Generate unique host ID (e.g., "msf1")
-                    self.save_session(host_id, host)  # Save to self.targets
+                    if host_id not in self.targets:  # **Check for duplicates before saving**
+                        self.save_session(host_id, host)  # Save to `self.targets` only if unique
                     hosts.append(host_id)  # Append the full host ID (e.g., "msf1")
+                    
                 print("[+] Hosts Stored")
             except Exception as e:
                 print(f"[!] Error querying hosts in {framework}: {e}")

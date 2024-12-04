@@ -3,8 +3,10 @@ import time  # Fix: Import time module
 import json
 import subprocess
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
+from ...baseC2.base_C2 import BaseC2
 
-class Metasploit:
+
+class Metasploit(BaseC2):
     def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
@@ -53,7 +55,7 @@ class Metasploit:
             hosts.append(host_info)
             # Save host info to Eshu's targets
             host_id = f"msf{session_id}"
-            self.eshu.save_session(host_id, host_info)
+            # self.eshu.save_session(host_id, host_info)
         if hosts:
             print("[+] Active sessions retrieved:")
             for host in hosts:

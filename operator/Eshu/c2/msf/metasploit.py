@@ -2,7 +2,9 @@ import os
 import time  # Fix: Import time module
 import json
 import subprocess
+import subprocess
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
+  # Fix: Import MsfRpcClient properly
 
 class Metasploit:
     def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
@@ -39,28 +41,12 @@ class Metasploit:
             print(f"[!] Error starting msfconsole: {e}")
 
     def query_hosts(self):
-
-        """Retrieve all active sessions from Metasploit."""
-        hosts = []
-        print("Retrieving active sessions in Metasploit...")
-        for session_id, session in self.client.sessions.list.items():
-            host_info = {
-                "session_id": session_id,
-                "target_host": session.get("tunnel_peer", "N/A"),
-                "platform": session.get("platform", "N/A"),
-                "via_exploit": session.get("via_exploit", "N/A"),
-                "via_payload": session.get("via_payload", "N/A"),
-            }
-            hosts.append(host_info)
-            # Save host info to Eshu's targets
-            host_id = f"msf{session_id}"
-            self.eshu.save_session(host_id, host_info)
-        if hosts:
-            print("[+] Active sessions retrieved:")
-            for host in hosts:
-                print(f"\tSession ID {host['session_id']}: Target Host: {host['target_host']}, Platform: {host['platform']}")
-        else:
-            print("[!] No active sessions.")
+        """Retrieve all hosts from Metasploit, filtered by kwargs."""
+        hosts = self.client.db.hosts
+        print("Retrieved Metasploit compromised hosts")
+        for session_id in self.client.sessions.list.keys():
+            if not any(session_id == str(val) for val in self.targets.values()):
+                self.save_session("msf", int(session_id))        
         return hosts
 
     def send_cmd(self, id=None, os=None, commands=[]):

@@ -19,6 +19,8 @@ services:
     environment:
       - RPCPASS=memes
       - RPCPORT=1337
+      - SLIVERPASS=memes
+      - SLIVERPORT=1338
   #    - LPORT=4444
   #    - LHOST=0.0.0.0
   #    - DATABASE_URL=
@@ -53,6 +55,9 @@ services:
 
   # Metasploitable2 Victim Machine
   metasploitable2:
+    build:
+      context: .
+      dockerfile: operator/Dockerfile
     image: tleemcjr/metasploitable2
     container_name: metasploitable2
     hostname: metasploitable2

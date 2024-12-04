@@ -1,3 +1,2 @@
-from . import backend, msf, sliver
-from .backend import *
+from . import msf, sliver
 # more imports per module (.py) or package (directory)

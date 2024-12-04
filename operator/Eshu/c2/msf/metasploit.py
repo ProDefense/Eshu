@@ -5,6 +5,7 @@ import subprocess
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
 
 class Metasploit:
+    _NAME = "msf"  # This defines the name of the C2 framework
     def __init__(self, password, Eshu, server="127.0.0.1", port=1337):
         self.name = "Metasploit API"
         self.start_msfconsole_with_script("/usr/src/metasploit-framework/docker/msfconsole.rc")

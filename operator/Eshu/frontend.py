@@ -15,13 +15,18 @@ class Eshu:
         """
         self.targets[session_name] = host_info
 
-    def register(self, **c2):
+    def register(self, framework):
         """
         Register a C2 interface to be used.
         :param c2: Dictionary containing C2 name and framework instance.
         """
-        print(f"[+] Registered {c2['framework']} for {c2['name']}")
-        self.c2s[c2['name']] = c2['framework']
+    
+        if not hasattr(framework, '_NAME'):
+          raise ValueError("Framework instance must have a '_NAME' attribute.")
+
+        name = framework._NAME.lower()  # Normalize to lowercase for consistency
+        print(f"[+] Registered {framework.__class__.__name__} with name '{name}'")
+        self.c2s[name] = framework
 
     def get_hosts(self, *frameworks):
         """

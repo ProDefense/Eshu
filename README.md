@@ -45,7 +45,7 @@ In a second terminal launch into the operator machine
 ```console
 docker exec -it operator /bin/bash
 ```
-
+Then in operator's bash terminal
 ```bash
 sliver-client import /workspace/operator1_localhost.cfg
 sliver-client

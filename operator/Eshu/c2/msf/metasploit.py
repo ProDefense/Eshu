@@ -130,3 +130,60 @@ class Metasploit(BaseC2):
     #    # break
     #    else:
     #        print("[!] Scan failed. Retrying...")
+
+    def run_exploit(self, module_type):
+        """
+        Search and run the best-fit exploit of the given type (e.g., auxiliary).
+        :param module_type: Type of module (e.g., 'auxiliary').
+        """
+        # Step 1: Search for modules
+        print(f"[+] Searching for {module_type} modules...")
+        modules = self.client.modules.search(module_type)
+
+        if not modules:
+            print(f"[!] No {module_type} modules found.")
+            return
+
+        # Step 2: Test compatibility and find the best-fit module
+        print(f"[+] Found {len(modules)} {module_type} modules. Testing for compatibility...")
+        compatible_modules = []
+        for module in modules:
+            module_name = module.get("fullname")
+            exploit = self.client.modules.use(module_type, module_name)
+
+            # Example: Check if the module has required options set by default
+            if "RHOSTS" in exploit.missing_required:
+                print(f"[!] Module {module_name} requires RHOSTS and is not automatically compatible.")
+                continue
+
+            compatible_modules.append((module_name, exploit))
+            print(f"[+] Module {module_name} is potentially compatible.")
+
+        if not compatible_modules:
+            print(f"[!] No compatible {module_type} modules found.")
+            return
+
+        # Step 3: Select the best-fit module (For simplicity, choose the first compatible module)
+        best_fit_module = compatible_modules[0]
+        module_name, exploit_instance = best_fit_module
+        print(f"[+] Selected best-fit module: {module_name}")
+
+        # Step 4: Ask the user to input required options
+        print(f"[+] Required options for {module_name}:")
+        for option, details in exploit_instance.options.items():
+            default = details.get("default", "")
+            required = details.get("required", False)
+            print(f"  - {option} (Required: {required}, Default: {default})")
+            if required:
+                user_input = input(f"Enter value for {option} (Press Enter to use default '{default}'): ")
+                exploit_instance[option] = user_input if user_input.strip() else default
+
+        # Step 5: Execute the exploit
+        print(f"[+] Running exploit: {module_name} with configured options...")
+        result = exploit_instance.execute()
+        print(f"[+] Exploit result: {result}")
+
+        if 'job_id' in result:
+            print("[+] Exploit started successfully.")
+        else:
+            print("[!] Exploit failed to start. Check configuration options.")

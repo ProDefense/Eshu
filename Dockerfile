@@ -27,9 +27,7 @@ SHELL ["/bin/bash", "-c"]
 # Install pymetasploit3
 RUN pip install pymetasploit3
 
-# Install Sliver-py
-#RUN pip install sliver-py
-
+# Install Metasploit
 RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
     cd /opt/metasploit-framework && \
     git submodule init && \
@@ -39,6 +37,12 @@ RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit
 
 ENV PATH="/opt/metasploit-framework/:$PATH"
 
+# Run the msfconsole.rc commands and start Metasploit RPC service
+COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
+
+# Install Sliver-py
+RUN pip install sliver-py
+
 # Sliver Client and Sliver Server
 RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux
 
@@ -47,9 +51,6 @@ RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-se
 RUN chmod +x sliver-client_linux sliver-server_linux && \
     mv sliver-client_linux /usr/local/bin/sliver-client && \
     mv sliver-server_linux /usr/local/bin/sliver-server
-
-# Run the msfconsole.rc commands and start Metasploit RPC service
-COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
 
 # Commenting out this line because its un necessary if we are overriding the rc file anyway
 # Also environment args in dockercompose do not apply here, you will need to set build args for that to pass correctl.y

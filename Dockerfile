@@ -28,7 +28,7 @@ SHELL ["/bin/bash", "-c"]
 RUN pip install pymetasploit3
 
 # Install Sliver-py
-RUN pip install sliver-py
+#RUN pip install sliver-py
 
 RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit-framework && \
     cd /opt/metasploit-framework && \

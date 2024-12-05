@@ -20,6 +20,11 @@ Then launch into the operator machine
 docker exec -it operator /bin/bash
 ```
 
+Launch Sliver-Server
+```bash
+sliver-server
+```
+
 In the terminal
 ```bash
 python eshuCLP/main.py

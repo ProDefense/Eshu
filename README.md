@@ -16,7 +16,7 @@ docker build -t sliver .
 
 Start Sliver
 ```console
-docker run --name sliver_conatiner -it sliver
+docker run --name sliver_container -it sliver
 ```
 
 To stop

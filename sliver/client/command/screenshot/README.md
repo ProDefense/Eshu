@@ -1,5 +1,0 @@
-Screenshot
-===========
-
-Screenshot command implementation.
-

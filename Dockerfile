@@ -39,6 +39,15 @@ RUN git clone https://github.com/rapid7/metasploit-framework.git /opt/metasploit
 
 ENV PATH="/opt/metasploit-framework/:$PATH"
 
+# Sliver Client and Sliver Server
+RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux
+
+RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-server_linux
+
+RUN chmod +x sliver-client_linux sliver-server_linux && \
+    mv sliver-client_linux /usr/local/bin/sliver-client && \
+    mv sliver-server_linux /usr/local/bin/sliver-server
+
 # Run the msfconsole.rc commands and start Metasploit RPC service
 COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
 
@@ -51,7 +60,7 @@ WORKDIR /workspace/eshuCLP
 COPY ./src/ /workspace/eshuCLP/
 
 # Install Eshu using pip based on the pyproject.toml file
-RUN pip install pyproject.toml
+#RUN pip install .
 
 WORKDIR /workspace
 

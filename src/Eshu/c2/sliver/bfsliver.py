@@ -10,14 +10,14 @@ class Sliver(BaseC2):
         self.name = "Sliver API"
         self.client = None
         self.config = None
-        self.config_path = os.path.join('workspace', 'operator1_localhost.cfg')
+        self.config_path = os.path.join('operator1_localhost.cfg')
         asyncio.run(self.connect_to_sliver_server())
 
     async def connect_to_sliver_server(self):
         """Connect to the Sliver server."""
         print(f"=============== Starting {self.name} ===============")
         self.config = SliverClientConfig.parse_config_file(self.config_path)
-        self.client = SliverClient(config)
+        self.client = SliverClient(self.config)
         await self.client.connect()
         print("[+] Successfully connected to Sliver Server!")
 

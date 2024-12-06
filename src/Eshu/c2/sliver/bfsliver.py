@@ -11,16 +11,18 @@ class Sliver(BaseC2):
         self.client = None
         self.config = None
         self.config_path = os.path.join('operator1_localhost.cfg')
-        asyncio.run(self.connect_to_sliver_server_and_beacon())
+        asyncio.run(self.connect_to_sliver_server())
+        asyncio.run(self.connect_to_beacon())
 
-    async def connect_to_sliver_server_and_beacon(self):
+    async def connect_to_sliver_server(self):
         """Connect to the Sliver server."""
         print(f"=============== Starting {self.name} ===============")
         self.config = SliverClientConfig.parse_config_file(self.config_path)
         self.client = SliverClient(self.config)
         await self.client.connect()
         print("[+] Successfully connected to Sliver Server!")
-        
+
+    async def connect_to_beacon(self):
         """Connect to active Beacon."""
         print(f"=============== Connecting to Sliver Beacon ===============")
         beacons = await self.client.beacons()
@@ -53,7 +55,7 @@ class Sliver(BaseC2):
         print ('Sessions: %r' % sessions)
         return sessions
 
-    def send_cmd(self, hostID=None, os=None, commands=[]):
+    async def send_cmd(self, hostID=None, os=None, commands=[]):
         """
         Run commands on the specified host ID.
         :param hostID: Unique host identifier (e.g., "sliver1").

@@ -1,6 +1,7 @@
 import Eshu
 from Eshu.c2 import msf, sliver
 import time
+import asyncio
 
 # Initialize Eshu Instance
 e = Eshu.Eshu()
@@ -8,11 +9,11 @@ e = Eshu.Eshu()
 # Set up Metasploit and Sliver instances
 password = "memes"
 msfInstance = msf.Metasploit(password)
-#sliverInstance = sliver.Sliver()
+sliverInstance = sliver.Sliver()
 
 # Register Metasploit and Sliver with Eshu
 e.register(msfInstance)
-#e.register(name="sliver", framework=sliverInstance)
+e.register(sliverInstance)
 
 # LEAVE THIS OPTION
 #version1:
@@ -56,20 +57,28 @@ exploit_result = run_msf_exploit()
 print(f"[++++] RESULT = {exploit_result}")
 
 # Retrieve and print hosts
-hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
-print("Hosts =", hostSet)
+async def getHosts():
 
+    hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
+    print("Hosts =", hostSet)
+    return hostSet
+
+async def runCommands():
+
+    hostSet = await getHosts()    
 # Only execute if hostSet is populated when querying "get_hosts"
-if hostSet:
-    try:
-        print("Testing command execution...")
-        commands = ["whoami", "uname -a"]
-        host_details = {"id": "msf1", "os": "linux"}
-        e.run_cmd(commands=commands, **host_details)
-    except ValueError as ve:
-        print("[!] Error during command execution:", ve)
-else:
-    print("[!] No hosts available for command execution.")
+    if hostSet:
+        try:
+            print("Testing command execution...")
+            commands = ["whoami", "uname -a"]
+            host_details = {"id": "msf1", "os": "linux"}
+            e.run_cmd(commands=commands, **host_details)
+        except ValueError as ve:
+            print("[!] Error during command execution:", ve)
+    else:
+        print("[!] No hosts available for command execution.")
+   
+asyncio.run(runCommands())      
 
 # Task 3: List all exploit
 # # List all exploit modules using the Metasploit instance / Looking for certain exploit

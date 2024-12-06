@@ -27,7 +27,7 @@ class Sliver(BaseC2):
         In this case, this would be sessions
         :return: List of agent details.
         """
-        sessions = await client.sessions()
+        sessions = await self.client.sessions()
         if not len(sessions):
             print("No Sliver Sessions!")
             return

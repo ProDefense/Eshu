@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     openssh-server ruby-full libssl-dev \
     libsqlite3-dev libpq-dev libyaml-dev \
     libxml2-dev libxslt1-dev \
+    mingw-w64 binutils-mingw-w64 g++-mingw-w64 mingw-w64-tools gcc-mingw-w64 \ 
     libcurl4-openssl-dev libgmp-dev sudo && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -44,6 +45,7 @@ COPY ./src/config_files/msfconsole.rc /opt/metasploit-framework/msfconsole.rc
 RUN pip install sliver-py
 
 # Sliver Client and Sliver Server
+
 RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-client_linux
 
 RUN wget https://github.com/BishopFox/sliver/releases/download/v1.5.42/sliver-server_linux

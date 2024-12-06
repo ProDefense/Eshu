@@ -12,6 +12,7 @@ class Sliver(BaseC2):
         self.config = None
         self.config_path = os.path.join('operator1_localhost.cfg')
         asyncio.run(self.connect_to_sliver_server())
+        asyncio.run(self.connect_to_beacon())
 
     async def connect_to_sliver_server(self):
         """Connect to the Sliver server."""
@@ -20,6 +21,25 @@ class Sliver(BaseC2):
         self.client = SliverClient(self.config)
         await self.client.connect()
         print("[+] Successfully connected to Sliver Server!")
+
+    async def connect_to_beacon(self):
+        """Connect to active Beacon."""
+        print(f"=============== Connecting to Sliver Beacon ===============")
+        beacons = await self.client.beacons()
+        if not len(beacons):
+            print('No beacons!')
+            return
+        
+        beacon = await self.client.interact_beacon(beacons[0].ID)
+        ls_task = await beacon.ls()
+        print('Created beacon task: %s' % ls_task)
+        print('Waiting for beacon task to complete ...')
+        ls = await ls_task
+
+        # Beacon task has completed (Future was resolved)
+        print('Listing directory contents of: %s' % ls.Path)
+        for fi in ls.Files:
+            print('FileName: %s (dir: %s, size: %d)' % (fi.Name, fi.IsDir, fi.Size))
 
     async def query_hosts(self):
         """

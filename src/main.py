@@ -7,11 +7,11 @@ e = Eshu.Eshu()
 
 # Set up Metasploit and Sliver instances
 password = "memes"
-msfInstance = msf.Metasploit(password)
+# msfInstance = msf.Metasploit(password)
 sliverInstance = sliver.Sliver()
 
 # Register Metasploit and Sliver with Eshu
-e.register(msfInstance)
+# e.register(msfInstance)
 e.register(sliverInstance)
 
 # LEAVE THIS OPTION

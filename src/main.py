@@ -11,7 +11,7 @@ msfInstance = msf.Metasploit(password)
 sliverInstance = sliver.Sliver()
 
 # Register Metasploit and Sliver with Eshu
-# e.register(msfInstance)
+e.register(msfInstance)
 e.register(sliverInstance)
 
 # LEAVE THIS OPTION

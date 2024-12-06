@@ -11,18 +11,16 @@ class Sliver(BaseC2):
         self.client = None
         self.config = None
         self.config_path = os.path.join('operator1_localhost.cfg')
-        asyncio.run(self.connect_to_sliver_server())
-        asyncio.run(self.connect_to_beacon())
+        asyncio.run(self.connect_to_sliver_server_and_beacon())
 
-    async def connect_to_sliver_server(self):
+    async def connect_to_sliver_server_and_beacon(self):
         """Connect to the Sliver server."""
         print(f"=============== Starting {self.name} ===============")
         self.config = SliverClientConfig.parse_config_file(self.config_path)
         self.client = SliverClient(self.config)
         await self.client.connect()
         print("[+] Successfully connected to Sliver Server!")
-
-    async def connect_to_beacon(self):
+        
         """Connect to active Beacon."""
         print(f"=============== Connecting to Sliver Beacon ===============")
         beacons = await self.client.beacons()

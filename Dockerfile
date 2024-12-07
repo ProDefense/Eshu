@@ -63,6 +63,7 @@ WORKDIR /workspace/eshuCLP
 COPY ./src/ /workspace/eshuCLP/
 
 # Install Eshu using pip based on the pyproject.toml file
+RUN python3 -m pip install --upgrade pip setuptools
 RUN pip install .
 
 WORKDIR /workspace

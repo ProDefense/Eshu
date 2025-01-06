@@ -2,6 +2,7 @@ import os
 import time
 import json
 import subprocess
+import asyncio
 from pymetasploit3.msfrpc import MsfRpcClient  # Fix: Import MsfRpcClient properly
 from ...baseC2.base_C2 import BaseC2
 
@@ -47,7 +48,7 @@ class Metasploit(BaseC2):
         except Exception as e:
             print(f"[!] Error starting msfconsole: {e}")
 
-    def query_hosts(self):
+    async def query_hosts(self):
         """Retrieve all active sessions from Metasploit."""
         hosts = []
         print("Retrieving active sessions in Metasploit...")

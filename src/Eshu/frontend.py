@@ -1,4 +1,5 @@
 import re
+import asyncio
 from .baseC2.base_C2 import BaseC2
 
 class Eshu:
@@ -29,7 +30,7 @@ class Eshu:
         print(f"[+] Registered {framework.__class__.__name__} with name '{name}'")
         self.c2s[name] = framework
 
-    def get_hosts(self, *frameworks):
+    async def get_hosts(self, *frameworks):
         """
         Retrieve all host information from specified C2 frameworks.
         :param frameworks: Framework names to query (if empty, query all).
@@ -40,7 +41,7 @@ class Eshu:
         frameworks = frameworks or self.c2s.keys()  # Query all C2 frameworks if none specified
         for framework in frameworks:
             try:
-                framework_hosts = self.c2s[framework].query_hosts()  # Get hosts from the framework
+                framework_hosts = await self.c2s[framework].query_hosts()
                 for host in framework_hosts:
                     session_id = host.get("session_id")
                     host_id = f"{framework}{session_id}"  # Generate unique host ID (e.g., "msf1")

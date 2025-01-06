@@ -59,7 +59,7 @@ print(f"[++++] RESULT = {exploit_result}")
 # Retrieve and print hosts
 async def getHosts():
 
-    hostSet = e.get_hosts()  # Retrieve all connected hosts across frameworks
+    hostSet = await e.get_hosts()  # Retrieve all connected hosts across frameworks
     print("Hosts =", hostSet)
     return hostSet
 
@@ -78,7 +78,13 @@ async def runCommands():
     else:
         print("[!] No hosts available for command execution.")
    
-asyncio.run(runCommands())      
+async def main():
+    # Initialize Sliver asynchronously
+    await sliverInstance.start()  # Correctly use await in an async function
+    # Other async calls can be made here as well
+    await runCommands()
+
+asyncio.run(main())  # Execute the main async function     
 
 # Task 3: List all exploit
 # # List all exploit modules using the Metasploit instance / Looking for certain exploit

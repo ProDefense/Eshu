@@ -13,33 +13,15 @@ class Sliver(BaseC2):
         self.config_path = os.path.join('operator1_localhost.cfg')
     
     async def start(self): 
-        await self.connect_to_sliver_server_and_beacon()
+        await self.connect_to_sliver_server()
 
-    async def connect_to_sliver_server_and_beacon(self):
+    async def connect_to_sliver_server(self):
         """Connect to the Sliver server."""
         print(f"=============== Starting {self.name} ===============")
         self.config = SliverClientConfig.parse_config_file(self.config_path)
         self.client = SliverClient(self.config)
         await self.client.connect()
         print("[+] Successfully connected to Sliver Server!")
-        
-        """Connect to active Beacon."""
-        print(f"=============== Connecting to Sliver Beacon ===============")
-        beacons = await self.client.beacons()
-        if not len(beacons):
-            print('No beacons!')
-            return
-        
-        beacon = await self.client.interact_beacon(beacons[0].ID)
-        ls_task = await beacon.ls()
-        print('Created beacon task: %s' % ls_task)
-        print('Waiting for beacon task to complete ...')
-        ls = await ls_task
-
-        # Beacon task has completed (Future was resolved)
-        print('Listing directory contents of: %s' % ls.Path)
-        for fi in ls.Files:
-            print('FileName: %s (dir: %s, size: %d)' % (fi.Name, fi.IsDir, fi.Size))
 
     async def query_hosts(self):
         """
@@ -47,13 +29,25 @@ class Sliver(BaseC2):
         In this case, this would be sessions
         :return: List of agent details.
         """
-        sessions = await self.client.sessions()
-        if not len(sessions):
-            print("No Sliver Sessions!")
+
+        hosts = []
+        print("Retrieving active beacons in Sliver...")
+        """Hosts in this case is a beacon, rather than a session"""
+        beacons = await self.client.beacons()
+        if not len(beacons):
+            print('[!] No Sliver hosts!')
             return
+
+        for beacon in beacons:
+            host_info = {
+                "session_id": beacon.ID
+            }
+            hosts.append(host_info)
+            host_id = f"sliver{beacon.ID}"
+            for host in hosts:
+                print(f"\tSession ID {host['session_id']}")
         
-        print ('Sessions: %r' % sessions)
-        return sessions
+        return hosts
 
     async def send_cmd(self, hostID=None, os=None, commands=[]):
         """

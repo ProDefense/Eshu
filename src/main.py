@@ -65,14 +65,15 @@ async def getHosts():
 
 async def runCommands():
 
-    hostSet = await getHosts()    
-# Only execute if hostSet is populated when querying "get_hosts"
+    hostSet = await getHosts()
+    # Only execute if hostSet is populated when querying "get_hosts"
     if hostSet:
         try:
             print("Testing command execution...")
             commands = ["whoami", "uname -a"]
-            host_details = {"id": "msf1", "os": "linux"}
-            e.run_cmd(commands=commands, **host_details)
+            for host in hostSet:
+                host_details = {"id": host, "os": "linux"}
+                e.run_cmd(commands=commands, **host_details)
         except ValueError as ve:
             print("[!] Error during command execution:", ve)
     else:

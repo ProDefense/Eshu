@@ -97,6 +97,8 @@ class Eshu:
 
     def getName(self, hostID):
         """Extract the framework name from the hostID."""
+        if hostID[:6] == 'sliver':
+            return 'sliver'
         match = re.match(r"([a-zA-Z]+)", hostID)
         if match:
             return match.group(1)

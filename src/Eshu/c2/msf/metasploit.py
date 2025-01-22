@@ -67,7 +67,7 @@ class Metasploit(BaseC2):
         if hosts:
             print("[+] Active sessions retrieved:")
             for host in hosts:
-                print(f"\tSession ID {host['session_id']}: Target Host: {host['target_host']}, Platform: {host['platform']}")
+                print(f"\tSession ID: {host['session_id']}, Target Host: {host['target_host']}, Platform: {host['platform']}")
         else:
             print("[!] No active sessions.")
         return hosts

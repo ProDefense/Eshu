@@ -10,6 +10,7 @@ class Sliver(BaseC2):
         self.name = "Sliver API"
         self.client = None
         self.config = None
+        self.beacons = None
         self.config_path = os.path.join('operator1_localhost.cfg')
     
     async def start(self): 
@@ -33,23 +34,28 @@ class Sliver(BaseC2):
         hosts = []
         print("Retrieving active beacons in Sliver...")
         """Hosts in this case is a beacon, rather than a session"""
-        beacons = await self.client.beacons()
-        if not len(beacons):
+        self.beacons = await self.client.beacons()
+        if not len(self.beacons):
             print('[!] No Sliver hosts!')
             return
 
-        for beacon in beacons:
+        for beacon in self.beacons:
             host_info = {
-                "session_id": beacon.ID
+                "session_id": beacon.ID,
+                "target_host" : beacon.RemoteAddress,
+                "platform" : beacon.OS
             }
             hosts.append(host_info)
             host_id = f"sliver{beacon.ID}"
+        if hosts:
+            print("[+] Active beacons retrieved:")
             for host in hosts:
-                print(f"\tSession ID {host['session_id']}")
-        
+                print(f"\tBeacon ID: {host['session_id']}, Target Host: {host['target_host']}, Platform: {host['platform']}")
+        else:
+            print("[!] No active beacons.")
         return hosts
 
-    async def send_cmd(self, hostID=None, os=None, commands=[]):
+    async def send_cmd(self, session_id=None, os=None, commands=[]):
         """
         Run commands on the specified host ID.
         :param hostID: Unique host identifier (e.g., "sliver1").
@@ -58,25 +64,31 @@ class Sliver(BaseC2):
         :return: List of command outputs.
         """
         output = []
-        if not hostID:
-            raise ValueError("Host ID must be provided.")
+        if not session_id:
+            raise ValueError("Beacon ID must be provided.")
 
-        # Get agent details from targets mapping
-        agent = self.targets.get(hostID)
-        if not agent:
-            raise ValueError(f"Host ID {hostID} not found in targets.")
+        # Find beacon with corresponding ID
+        beacon = None
+        for b in self.beacons:
+            print(b.ID)
+            if b.ID == session_id:
+                beacon = b
+                break
+        if not beacon:
+            raise ValueError(f"[!] Beacon with ID {session_id} not found.")
 
         # Check OS if provided
-        if os and agent["os"] != os:
-            raise ValueError(f"Agent {agent['id']} is not running on the specified OS: {os}.")
+        if os and beacon.OS != os:
+            raise ValueError(f"Agent {session_id} is not running on the specified OS: {os}.")
 
         # Execute commands
         for cmd in commands:
             try:
-                print(f"Sending command '{cmd}' to target with ID: {hostID}")
-                response = self.client.execute(agent["id"], cmd)  # Replace with correct API call
-                output.append(response.output)
+                print(f"Sending command '{cmd}' to target with ID: {session_id}")
+                response_task = await self.beacon.execute(cmd)
+                response = await response_task
                 print("Command executed successfully.")
+                print(response)
             except Exception as e:
                 output.append(f"Error executing command '{cmd}': {e}")
 

@@ -86,7 +86,7 @@ class Sliver(BaseC2):
         # Execute commands
         for cmd in commands:
             try:
-                print(f"Sending command '{cmd}' to target with ID: {session_id}")
+                print(f"Sending command '{cmd}' to beacon with ID: {session_id}")
                 cmd_args = cmd.split()
                 response_task = await beacon.execute(cmd_args[0], cmd_args[1:])
                 response = await response_task

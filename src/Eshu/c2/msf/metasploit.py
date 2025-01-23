@@ -72,7 +72,7 @@ class Metasploit(BaseC2):
             print("[!] No active sessions.")
         return hosts
 
-    def send_cmd(self, session_id=None, os=None, commands=[]):
+    async def send_cmd(self, session_id=None, os=None, commands=[]):
         """
         Execute commands on a specific session in Metasploit.
         :param session_id: Session ID for the target.

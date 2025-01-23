@@ -73,7 +73,7 @@ async def runCommands():
             commands = ["whoami", "uname -a"]
             for host in hostSet:
                 host_details = {"id": host, "os": "linux"}
-                e.run_cmd(commands=commands, **host_details)
+                await e.run_cmd(commands=commands, **host_details)
         except ValueError as ve:
             print("[!] Error during command execution:", ve)
     else:

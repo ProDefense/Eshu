@@ -69,26 +69,29 @@ class Sliver(BaseC2):
 
         # Find beacon with corresponding ID
         beacon = None
-        for b in self.beacons:
-            print(b.ID)
-            if b.ID == session_id:
-                beacon = b
-                break
-        if not beacon:
-            raise ValueError(f"[!] Beacon with ID {session_id} not found.")
+        try:
+            beacon = await self.client.interact_beacon(session_id)
+        except Exception as e:
+            raise ValueError(f"[!] Session with ID {session_id} not found.")
 
         # Check OS if provided
-        if os and beacon.OS != os:
+        beacon_os = None
+        for b in self.beacons:
+            if session_id == b.ID:
+                beacon_os = b.OS
+                break
+        if os and beacon_os != os:
             raise ValueError(f"Agent {session_id} is not running on the specified OS: {os}.")
 
         # Execute commands
         for cmd in commands:
             try:
                 print(f"Sending command '{cmd}' to target with ID: {session_id}")
-                response_task = await self.beacon.execute(cmd)
+                cmd_args = cmd.split()
+                response_task = await beacon.execute(cmd_args[0], cmd_args[1:])
                 response = await response_task
-                print("Command executed successfully.")
-                print(response)
+                cmd_output = response.Stdout.decode("utf-8")
+                output.append(f"Output for {cmd}: {cmd_output}")
             except Exception as e:
                 output.append(f"Error executing command '{cmd}': {e}")
 

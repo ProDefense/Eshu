@@ -54,7 +54,7 @@ class Eshu:
                 print(f"[!] Error querying hosts in {framework}: {e}")
         return hosts
 
-    def run_cmd(self, commands=None, id=None, os=None):
+    async def run_cmd(self, commands=None, id=None, os=None):
         """
         Run commands on a specific host.
         :param commands: List of commands to execute.
@@ -78,7 +78,7 @@ class Eshu:
 
         # Pass the session data to the C2 framework for command execution
         session_id = session_info.get("session_id")
-        outputs = c2_framework.send_cmd(session_id=session_id, os=os, commands=commands)
+        outputs = await c2_framework.send_cmd(session_id=session_id, os=os, commands=commands)
         
         print("[+] Command response(s):")
         for response in outputs:

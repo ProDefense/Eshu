@@ -1,4 +1,5 @@
 import re
+import sys
 from .baseC2.base_C2 import BaseC2
 
 class Eshu:
@@ -9,21 +10,16 @@ class Eshu:
         self.targets = {}  # Map hostID to full host details
 
     def save_session(self, session_name, host_info):
-        """
-        Save the session details to the `self.targets` dictionary.
-        :param session_name: Unique session identifier (e.g., "msf1").
-        :param host_info: Full host information (dictionary).
-        """
+        """Save the session details to the `self.targets` dictionary."""
         self.targets[session_name] = host_info
 
     def register(self, framework):
         """
         Register a C2 interface to be used.
-        :param c2: Dictionary containing C2 name and framework instance.
+        :param framework: Framework instance with a `_NAME` attribute.
         """
-    
         if not hasattr(framework, '_NAME'):
-          raise ValueError("Framework instance must have a '_NAME' attribute.")
+            raise ValueError("Framework instance must have a '_NAME' attribute.")
 
         name = framework._NAME.lower()  # Normalize to lowercase for consistency
         print(f"[+] Registered {framework.__class__.__name__} with name '{name}'")
@@ -32,8 +28,6 @@ class Eshu:
     def get_hosts(self, *frameworks):
         """
         Retrieve all host information from specified C2 frameworks.
-        :param frameworks: Framework names to query (if empty, query all).
-        :return: List of all host IDs across specified frameworks.
         """
         hosts = []
         print("Getting Hosts")
@@ -43,11 +37,10 @@ class Eshu:
                 framework_hosts = self.c2s[framework].query_hosts()  # Get hosts from the framework
                 for host in framework_hosts:
                     session_id = host.get("session_id")
-                    host_id = f"{framework}{session_id}"  # Generate unique host ID (e.g., "msf1")
-                    if host_id not in self.targets:  # **Check for duplicates before saving**
-                        self.save_session(host_id, host)  # Save to `self.targets` only if unique
-                    hosts.append(host_id)  # Append the full host ID (e.g., "msf1")
-                    
+                    host_id = f"{framework}{session_id}"  # Generate unique host ID
+                    if host_id not in self.targets:  # Avoid duplicates
+                        self.save_session(host_id, host)
+                    hosts.append(host_id)  # Append the full host ID
                 print("[+] Hosts Stored")
             except Exception as e:
                 print(f"[!] Error querying hosts in {framework}: {e}")
@@ -56,10 +49,6 @@ class Eshu:
     def run_cmd(self, commands=None, id=None, os=None):
         """
         Run commands on a specific host.
-        :param commands: List of commands to execute.
-        :param id: Host ID (e.g., "msf1").
-        :param os: Operating system of the target (optional).
-        :return: Command outputs.
         """
         if not commands or not id:
             raise ValueError("[!] Both commands and host ID must be provided.")
@@ -84,6 +73,13 @@ class Eshu:
             print(f"\t{response}")
         return outputs
 
+    def getName(self, hostID):
+        """Extract the framework name from the hostID."""
+        match = re.match(r"([a-zA-Z]+)", hostID)
+        if match:
+            return match.group(1)
+        else:
+            raise ValueError(f"[!] Invalid hostID format: {hostID}")
 
     def getC2(self, hostID):
         """Extract the C2 framework (name) from hostID and return the corresponding C2."""
@@ -94,10 +90,27 @@ class Eshu:
         else:
             raise ValueError(f"[!] No C2 found for framework {name}")
 
-    def getName(self, hostID):
-        """Extract the framework name from the hostID."""
-        match = re.match(r"([a-zA-Z]+)", hostID)
-        if match:
-            return match.group(1)
-        else:
-            raise ValueError(f"[!] Invalid hostID format: {hostID}")
+def main():
+    """Main entry point for the Eshu CLI."""
+    print("Eshu CLI has been invoked!")
+    print(f"Arguments passed: {sys.argv[1:]}")
+    
+    # Initialize Eshu instance
+    eshu_instance = Eshu()
+    print("[+] Eshu instance initialized successfully.")
+    
+    # Demonstration of functionality
+    print("[*] Attempting to query hosts...")
+    hosts = eshu_instance.get_hosts()
+    if hosts:
+        print(f"[+] Found hosts: {hosts}")
+    else:
+        print("[!] No hosts found.")
+
+    print("[*] Attempting to run commands...")
+    try:
+        commands = ["whoami", "uname -a"]
+        host_id = hosts[0] if hosts else "msf1"  # Fallback host ID
+        eshu_instance.run_cmd(commands=commands, id=host_id)
+    except Exception as e:
+        print(f"[!] Error running commands: {e}")

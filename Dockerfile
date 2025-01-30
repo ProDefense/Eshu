@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev libpq-dev libyaml-dev \
     libxml2-dev libxslt1-dev \
     mingw-w64 binutils-mingw-w64 g++-mingw-w64 mingw-w64-tools gcc-mingw-w64 \ 
-    libcurl4-openssl-dev libgmp-dev sudo && \
+    libcurl4-openssl-dev libgmp-dev sudo libffi-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

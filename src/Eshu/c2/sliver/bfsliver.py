@@ -11,7 +11,7 @@ class Sliver(BaseC2):
         self.client = None
         self.config = None
         self.beacons = None
-        self.config_path = os.path.join('operator1_localhost.cfg')
+        self.config_path = os.path.join('/opt/sliver/operator1_localhost.cfg')
     
     async def start(self): 
         await self.connect_to_sliver_server()

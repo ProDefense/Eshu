@@ -1,0 +1,23 @@
+# === Sliver C2 instances ===
+[[c2.sliver]]
+# Logical name used in outputs & filtering
+name        = "red-team-sliver"
+# Path to your Sliver YAML config (as consumed by SliverClientConfig.parse_config_file)
+config_path = "/etc/sliver/red-team-config.yml"
+
+[[c2.sliver]]
+name        = "blue-team-sliver"
+config_path = "/etc/sliver/blue-team-config.yml"
+
+# === Metasploit RPC instances ===
+[[c2.metasploit]]
+name     = "msf-local"
+host     = "127.0.0.1"
+port     = 55552
+password = "changeme"
+
+[[c2.metasploit]]
+name     = "msf-remote"
+host     = "10.0.0.5"
+port     = 55552
+password = "supersecret"

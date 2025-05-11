@@ -1,0 +1,64 @@
+[build-system]
+requires = [
+  "setuptools>=61.0",
+  "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eshu"
+version = "0.0.1"
+description = "A common-language platform for post-exploitation across multiple C2 frameworks."
+readme = "README.md"
+requires-python = ">=3.7"
+license = { file = "LICENSE" }
+
+authors = [
+  { name = "Alexander Aviles", email = "alex@prodefense.example" },
+  { name = "Yousif Alsabah",   email = "yousif@prodefense.example" },
+  { name = "Xun-Yang Leong",   email = "xun@prodefense.example" },
+  { name = "Alan Ingersoll",   email = "alan@prodefense.example" },
+  { name = "Prateek Ravindran",email = "prateek@prodefense.example" }
+]
+
+keywords = [
+  "post-exploitation",
+  "C2",
+  "sliver",
+  "metasploit",
+  "eshu"
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Security",
+  "License :: Other/Proprietary License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Operating System :: OS Independent"
+]
+
+dependencies = [
+  "sliver-py>=0.0.19",
+  "pymetasploit3>=1.0.6",
+  "pluggy",
+  "toml>=0.10.0"
+]
+
+[project.urls]
+"Homepage"      = "https://github.com/ProDefense/Eshu"
+"Bug Tracker"   = "https://github.com/ProDefense/Eshu/issues"
+
+[project.scripts]
+"eshu-cli" = "eshu.orchestrator:main"
+
+[tool.setuptools]
+include-package-data = true
+license-files       = ["LICENSE"]
+
+[tool.setuptools.packages.find]
+where   = ["src"]
+include = ["eshu*"]

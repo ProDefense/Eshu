@@ -1,0 +1,12 @@
+[[c2.sliver]]
+# Logical name used in outputs & filtering
+name        = "red-team-sliver"
+# Path to your Sliver YAML config (as consumed by SliverClientConfig.parse_config_file)
+config_path = "/pascal_127.0.0.1.cfg"
+
+# === Metasploit RPC instances ===
+[[c2.metasploit]]
+name     = "msf-local"
+host     = "127.0.0.1"
+port     = 55552
+password = "changeme"
